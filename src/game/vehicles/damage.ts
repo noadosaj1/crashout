@@ -67,7 +67,8 @@ export function damageModifiers(damage: VehicleDamage, bias: number): DamageModi
   return {
     power: 1 - damage.engine * 0.55,
     steerRange: 1 - damage.steering * 0.3,
-    steerBias: bias * damage.steering * 0.16,
+    // Capped low on purpose: a wrecked car should pull, not be undriveable.
+    steerBias: bias * damage.steering * 0.075,
     grip: 1 - damage.tires * 0.4,
     damping: 1 - damage.suspension * 0.55,
     braking: 1 - damage.body * 0.2,

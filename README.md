@@ -89,6 +89,40 @@ drifting and wheelspin fall out for free.
 Every car is defined entirely by data in `src/config/vehicles.ts`. There is no
 per-vehicle code anywhere.
 
+Two details are worth knowing because they are counter-intuitive and were both
+found by measuring rather than by reading the code:
+
+**Drive force is applied at the centre of mass**, with the pitch couple it earned
+at the contact patches added separately. Applying it at the patches looks more
+correct and is a trap: the moment the body rolls by a fraction of a degree the
+two patches stop being symmetric about the centre of mass, equal drive forces no
+longer cancel in yaw, the resulting yaw causes more roll, and the car winds
+itself into a permanent turn with the wheels pointing dead ahead. Measured, an
+untouched car left a 200 m straight by 13 metres and ended 37° off its heading;
+the muscle car spun outright. The cost is that a genuine left/right traction
+split no longer steers the car — a trade worth making.
+
+**A yaw assist supplies the self-centring the model has none of.** It pulls the
+car toward the yaw rate its steering geometry asks for, and it only ever *damps*:
+it can slow a rotation the driver did not ask for, never add one. An assist that
+adds rotation spins the body while the velocity carries straight on, and the car
+crabs sideways at slip angles no tire could produce. Its authority falls away as
+the car leaves the ground, slides, or pulls the handbrake, so drifts stay drifts.
+
+Measured behaviour of the stock roster:
+
+| Car | 0–100 km/h | Turn radius at full lock | Slip angle |
+| --- | --- | --- | --- |
+| Ravello Pico (hatch) | 5.2 s | 22 m at 69 km/h | 3.1° |
+| Halloran Brutus (muscle) | 3.0 s | 99 m at 130 km/h | 0.8° |
+| Volkov Tundrak (SUV) | 4.3 s | 64 m at 108 km/h | 1.4° |
+| Nocturne Aerith X (supercar) | 2.4 s | 106 m at 169 km/h | 0.8° |
+| Brutus, handbrake down | — | 4 m at 29 km/h | 47° |
+
+That last row is the drift control: handbrake with throttle collapses rear
+lateral grip but keeps the rears driving, so a slide can be held. Handbrake
+alone locks them and the car slides to a stop.
+
 ### Crash severity
 
 Severity comes from how much velocity the solver removed from the car in a

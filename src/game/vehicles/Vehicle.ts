@@ -28,12 +28,23 @@ const LATERAL_STIFFNESS = 0.85
 /** Longitudinal traction budget relative to lateral, so wheelspin is rarer than slides. */
 const LONGITUDINAL_GRIP_SCALE = 1.35
 const HANDBRAKE_REAR_GRIP = 0.22
-/** Coasting deceleration per unit of speed: at 33 m/s this is ~2.3 m/s². */
-const COAST_DRAG = 0.07
+/** Constant rolling resistance, as a fraction of vehicle weight. */
+const ROLLING_RESISTANCE = 0.022
+/** Hard ceiling on speed, as a multiple of the quoted top speed. */
+const OVERSPEED_LIMIT = 1.08
 /** Per-wheel suspension force ceiling, as a multiple of vehicle mass. */
 const MAX_SUSPENSION_G = 42
 /** Torque applied per unit of input while all four wheels are off the ground. */
 const AIR_CONTROL = 2.6
+/**
+ * How hard the car is pulled toward the yaw rate its steering asks for, in
+ * 1/seconds. A raycast car has no self-centring of its own: with the wheels
+ * straight, a car that is already rotating has no lateral slip for the tires to
+ * resist, so the rotation locks in and the car curves away forever. Real cars
+ * self-centre through steering geometry; this does the same job directly, and
+ * is also what makes turn-in feel immediate rather than vague.
+ */
+const YAW_ASSIST = 8
 
 export interface WheelState {
   /** Chassis-local hardpoint the suspension ray starts from. */
@@ -96,6 +107,16 @@ export class Vehicle {
   private brakePower = 0
   private baseGrip = 0
   private maxSteer = 0
+  /**
+   * Aerodynamic drag coefficient, solved so that full throttle balances drag
+   * exactly at the car's quoted top speed. Without a real drag term the only
+   * limiter is the drive-force falloff, and cars creep toward a speed they never
+   * actually reach — which made every number in the garage a lie.
+   */
+  private dragCoefficient = 0
+  /** Yaw inertia and wheelbase, cached for the steering assist. */
+  private readonly inertiaY: number
+  private readonly wheelbase: number
 
   private steerAngle = 0
   private boostFuel = 0
@@ -134,6 +155,10 @@ export class Vehicle {
   private readonly wForward = new THREE.Vector3()
   private readonly wRight = new THREE.Vector3()
   private readonly wImpulse = new THREE.Vector3()
+  /** Drive/brake impulse summed over the wheels, applied once per step. */
+  private readonly driveImpulse = new THREE.Vector3()
+  private readonly driveTorque = new THREE.Vector3()
+  private readonly wLever = new THREE.Vector3()
   /** Velocity entering the current solver step, for impact detection. */
   private readonly stepStartVel = new THREE.Vector3()
   /** Largest single-step velocity change since the last `consumeImpact()`. */
@@ -193,6 +218,8 @@ export class Vehicle {
       { x: 0, y: 0, z: 0, w: 1 },
       true,
     )
+    this.inertiaY = inertia.y
+    this.wheelbase = Math.max(1, options.spec.wheel.frontOffsetZ - options.spec.wheel.rearOffsetZ)
 
     const wheelY = -hh * 0.25
     const layout: Array<[number, number, boolean, boolean]> = [
@@ -241,6 +268,7 @@ export class Vehicle {
     this.brakePower = s.braking * s.mass * BRAKE_FORCE_SCALE * upgradeMultiplier('brakes', this.upgrades.brakes)
     this.baseGrip = s.grip * upgradeMultiplier('handling', this.upgrades.handling)
     this.maxSteer = s.steering * Math.min(1.12, upgradeMultiplier('handling', this.upgrades.handling))
+    this.dragCoefficient = this.power / (this.topSpeed * this.topSpeed)
   }
 
   get speed(): number {
@@ -500,6 +528,47 @@ export class Vehicle {
       )
     }
 
+    // Aerodynamic drag, on the body rather than through the tires so it applies
+    // in the air too and is never clipped by the traction budget.
+    if (speed > 0.5) {
+      const linvel = this.body.linvel()
+      const drag = this.dragCoefficient * speed * speed * dt
+      this.body.applyImpulse(
+        {
+          x: (-linvel.x / speed) * drag,
+          y: (-linvel.y / speed) * drag * 0.3,
+          z: (-linvel.z / speed) * drag,
+        },
+        true,
+      )
+    }
+
+    this.applyDriveForces(right)
+
+    // --- Steering assist -----------------------------------------------------
+    if (this.groundedCount > 0) {
+      const yaw = this.body.angvel().y
+      // The yaw rate the front wheels are asking for, from bicycle geometry.
+      const targetYaw = (this.forwardSpeed * Math.tan(this.steerAngle)) / this.wheelbase
+      // Authority falls away as the car leaves the ground, goes sideways or
+      // pulls the handbrake, so drifts stay drifts instead of being corrected
+      // out from under the player.
+      // Damping only: the assist may slow a rotation the driver did not ask
+      // for, never add one. Adding rotation lets it spin the body while the
+      // velocity carries straight on, and the car crabs sideways at absurd slip
+      // angles under any steering input the tires cannot actually deliver.
+      const overRotating =
+        Math.sign(yaw) !== Math.sign(targetYaw) || Math.abs(yaw) > Math.abs(targetYaw)
+      if (overRotating) {
+        let slip = 0
+        for (const wheel of this.wheels) slip = Math.max(slip, wheel.slip)
+        const authority =
+          (this.groundedCount / 4) * (input.handbrake ? 0.2 : 1) * (1 - Math.min(0.75, slip * 0.75))
+        const torque = (targetYaw - yaw) * this.inertiaY * YAW_ASSIST * authority
+        this.body.applyTorqueImpulse({ x: 0, y: torque * dt, z: 0 }, true)
+      }
+    }
+
     // Count flips for crash scoring: each time the car passes through inverted.
     const upDot = up.y
     if (this.lastUpDot > 0 && upDot <= 0) this.flipCount++
@@ -587,7 +656,11 @@ export class Vehicle {
     suspensionForce = Math.max(0, Math.min(suspensionForce, spec.mass * MAX_SUSPENSION_G))
     wheel.load = suspensionForce
 
-    _tmpB.copy(up).multiplyScalar(suspensionForce * dt)
+    // Along the contact normal, not the chassis up axis. Once the body rolls,
+    // a force along chassis-up has a horizontal component, and four of them at
+    // four asymmetrically-loaded contact points add up to a steady yaw torque
+    // that quietly steers the car off a straight line.
+    _tmpB.copy(wheel.contactNormal).multiplyScalar(suspensionForce * dt)
     this.body.applyImpulseAtPoint({ x: _tmpB.x, y: _tmpB.y, z: _tmpB.z }, wheel.contactPoint, true)
 
     // --- Traction -----------------------------------------------------------
@@ -604,7 +677,13 @@ export class Vehicle {
     const isRear = !wheel.isFront
     const handbrakeCut = input.handbrake && isRear ? HANDBRAKE_REAR_GRIP : 1
     const lateralBudget = gripCoefficient * handbrakeCut * suspensionForce * dt
-    const longitudinalBudget = gripCoefficient * LONGITUDINAL_GRIP_SCALE * suspensionForce * dt
+    // Handbrake-and-throttle is the drift control: rear lateral grip collapses
+    // but the rears keep driving, so the slide can be held. Handbrake alone
+    // locks them and also cuts their longitudinal grip, so the car slides to a
+    // stop rather than braking on rails.
+    const longitudinalCut = input.handbrake && isRear && input.throttle < 0.02 ? 0.45 : 1
+    const longitudinalBudget =
+      gripCoefficient * LONGITUDINAL_GRIP_SCALE * longitudinalCut * suspensionForce * dt
 
     const cornerMass = spec.mass * 0.25
     const lateralVel = contactVel.dot(wheelRight)
@@ -618,13 +697,16 @@ export class Vehicle {
       spec.drivetrain === 'awd' || (spec.drivetrain === 'fwd' ? wheel.isFront : isRear)
     const drivenCount = spec.drivetrain === 'awd' ? 4 : 2
 
-    if (input.handbrake && isRear) {
-      // Locked rears. This one is deliberately an impulse, not a force: it asks
-      // to cancel the wheel's forward motion outright and then gets clipped to
-      // the traction budget, which is exactly what a locked wheel does.
+    if (input.handbrake && isRear && input.throttle < 0.02) {
+      // Handbrake with no throttle: locked rears. Deliberately an impulse, not a
+      // force — it asks to cancel the wheel's forward motion outright and is
+      // then clipped to the traction budget, which is what a locked wheel does.
       driveImpulse = -longitudinalVel * cornerMass * 0.45
     } else if (input.throttle > 0.02 && driven) {
-      const falloff = Math.max(0, 1 - Math.pow(Math.max(0, longitudinalVel) / this.topSpeed, 2))
+      // Thrust is flat; aerodynamic drag (applied to the body in `update`) is
+      // what sets top speed. This only stops a downhill run from overspeeding.
+      const ceiling = this.topSpeed * OVERSPEED_LIMIT
+      const falloff = Math.max(0, 1 - Math.pow(Math.max(0, longitudinalVel) / ceiling, 6))
       driveImpulse = (input.throttle * this.power * mods.power * falloff * dt) / drivenCount
     }
 
@@ -640,11 +722,12 @@ export class Vehicle {
     }
 
     if (input.throttle < 0.02 && input.brake < 0.02) {
-      // Engine braking + rolling resistance, as a *force* (note the dt). Without
-      // it this coasted the car to a stop at ~33 m/s², which made the whole
-      // world feel like treacle.
-      driveImpulse += -longitudinalVel * cornerMass * COAST_DRAG * dt
-      // Below walking pace, settle the car instead of asymptoting toward zero.
+      // Rolling resistance, as a *force* (note the dt). An earlier version
+      // applied this as a raw impulse, which coasted the car to a stop at
+      // ~33 m/s² and made the whole world feel like treacle.
+      const rolling = ROLLING_RESISTANCE * spec.mass * 22.5 * Math.sign(longitudinalVel)
+      driveImpulse -= (rolling * dt) / 4
+      // Below walking pace, settle the car instead of creeping forever.
       if (Math.abs(longitudinalVel) < 0.6) driveImpulse += -longitudinalVel * cornerMass * 0.4
     }
 
@@ -655,13 +738,63 @@ export class Vehicle {
     const lateralSlip = Math.max(0, Math.abs(lateralVel) - 1.2) * 0.12
     wheel.slip = Math.min(1, longitudinalSlip + lateralSlip)
 
-    const impulse = this.wImpulse
-      .copy(wheelRight)
-      .multiplyScalar(lateralImpulse)
-      .addScaledVector(wheelForward, clampedDrive)
-    this.body.applyImpulseAtPoint({ x: impulse.x, y: impulse.y, z: impulse.z }, wheel.contactPoint, true)
+    // Lateral force acts at the real contact patch: that offset is what turns
+    // steering into yaw.
+    const lateral = this.wImpulse.copy(wheelRight).multiplyScalar(lateralImpulse)
+    this.body.applyImpulseAtPoint({ x: lateral.x, y: lateral.y, z: lateral.z }, wheel.contactPoint, true)
+
+    // Drive and brake force is accumulated instead of applied here; `update`
+    // applies the sum. See `applyDriveForces` for why.
+    const longitudinal = this.wImpulse.copy(wheelForward).multiplyScalar(clampedDrive)
+    this.driveImpulse.add(longitudinal)
+    const com = this.body.worldCom()
+    this.wLever.set(
+      wheel.contactPoint.x - com.x,
+      wheel.contactPoint.y - com.y,
+      wheel.contactPoint.z - com.z,
+    )
+    this.driveTorque.x += this.wLever.y * longitudinal.z - this.wLever.z * longitudinal.y
+    this.driveTorque.y += this.wLever.z * longitudinal.x - this.wLever.x * longitudinal.z
+    this.driveTorque.z += this.wLever.x * longitudinal.y - this.wLever.y * longitudinal.x
 
     wheel.spin += (longitudinalVel / spec.wheel.radius) * dt
+  }
+
+  /**
+   * Applies the accumulated drive/brake force as one impulse at the centre of
+   * mass plus the pitch-and-roll couple it earned at the contact patches — with
+   * the yaw component of that couple removed.
+   *
+   * Applying it at the patches directly looks more correct and is a trap. As
+   * soon as the body rolls by a fraction of a degree the two patches stop being
+   * symmetric about the centre of mass, so equal drive forces no longer cancel
+   * in yaw; the resulting yaw causes more roll, and the car winds itself into a
+   * permanent turn with the wheels pointing dead ahead. Measured, an untouched
+   * car left a 200 m straight by 13 metres.
+   *
+   * The cost is that a genuine left/right traction split no longer steers the
+   * car. That is a trade worth making: torque steer on split-mu is a detail,
+   * and driving straight is not.
+   */
+  private applyDriveForces(right: THREE.Vector3): void {
+    if (this.driveImpulse.lengthSq() > 1e-10) {
+      this.body.applyImpulse(
+        { x: this.driveImpulse.x, y: this.driveImpulse.y, z: this.driveImpulse.z },
+        true,
+      )
+    }
+    // Keep only the pitch component. For a laterally symmetric car the drive
+    // couple *is* pure pitch — squat under power, dive under braking. Anything
+    // about the other two axes is the geometric artifact of the contact patches
+    // shifting, and it is what feeds back into yaw.
+    const torque = this.driveTorque
+    const pitch = torque.dot(right)
+    if (Math.abs(pitch) > 1e-5) {
+      torque.copy(right).multiplyScalar(pitch)
+      this.body.applyTorqueImpulse({ x: torque.x, y: torque.y, z: torque.z }, true)
+    }
+    this.driveImpulse.set(0, 0, 0)
+    this.driveTorque.set(0, 0, 0)
   }
 
   private velocityAtPoint(point: THREE.Vector3, target: THREE.Vector3): THREE.Vector3 {

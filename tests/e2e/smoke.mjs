@@ -108,6 +108,55 @@ console.log('\ndriving')
   await page.screenshot({ path: `${SHOTS}/02-driving.png` })
 }
 
+console.log('\nstraight-line stability')
+{
+  // A raycast car has no self-centring of its own. Before the steering assist
+  // existed, an untouched car at full throttle left a 200 m straight by 13 m and
+  // ended up 37° off its heading; the muscle car spun outright. This is the
+  // regression guard for that.
+  await page.evaluate(() => {
+    const e = window.__CRASHOUT__
+    e.vehicle.repair()
+    // Southern highway, heading +x: the longest straight in the world.
+    e.vehicle.teleport({ x: -120, y: 1.4, z: -600 }, Math.PI / 2)
+  })
+  await settle(page, 1200)
+  await page.evaluate(() => window.__CRASHOUT__.clearLastCrash())
+
+  const startSim = (await probe(page)).simTime
+  await page.keyboard.down('KeyW')
+  let peakYawRate = 0
+  let sim = startSim
+  let state = null
+  while (sim - startSim < 7) {
+    state = await page.evaluate(() => {
+      const e = window.__CRASHOUT__
+      const q = e.vehicle.rotation
+      return {
+        sim: e.probe().simTime,
+        crashed: e.probe().lastCrash !== null,
+        z: e.vehicle.position.z,
+        yawRate: Math.abs(e.vehicle.body.angvel().y),
+        heading:
+          (Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y)) * 180) / Math.PI,
+      }
+    })
+    sim = state.sim
+    if (state.crashed) break
+    peakYawRate = Math.max(peakYawRate, state.yawRate)
+    await page.waitForTimeout(150)
+  }
+  await page.keyboard.up('KeyW')
+
+  check('the car does not spin under throttle', peakYawRate < 0.2, `peak ${peakYawRate.toFixed(3)} rad/s`)
+  check(
+    'it holds its heading with no steering input',
+    Math.abs(state.heading - 90) < 12,
+    `${(state.heading - 90).toFixed(1)}° off`,
+  )
+  check('it stays on the road', Math.abs(state.z + 600) < 15, `${(state.z + 600).toFixed(1)} m across`)
+}
+
 console.log('\ncrash physics')
 {
   // A 120 km/h head-on into a downtown tower.

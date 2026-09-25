@@ -41,6 +41,12 @@ export class PhysicsWorld {
   private intersectionHandler: IntersectionHandler | null = null
   /** Fraction of the way into the next physics step, for render interpolation. */
   alpha = 0
+  /**
+   * Fixed steps run since startup. Simulation time is `steps * PHYSICS_DT`,
+   * which is what gameplay actually experiences — wall time diverges from it
+   * whenever the frame rate drops below the step budget.
+   */
+  steps = 0
 
   constructor() {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY, z: 0 })
@@ -89,6 +95,7 @@ export class PhysicsWorld {
       for (const cb of this.postStepCallbacks) cb(PHYSICS_DT)
       this.drainEvents()
       this.accumulator -= PHYSICS_DT
+      this.steps++
       steps++
     }
     this.alpha = this.accumulator / PHYSICS_DT

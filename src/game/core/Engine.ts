@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { GadgetId, OwnedVehicle } from '@/types'
 import { getVehicleSpec } from '@/config/vehicles'
 import { DEFAULT_SPAWNS } from '@/config/world'
-import { MS_TO_KMH, RESPAWN_FALL_Y } from '@/config/constants'
+import { MS_TO_KMH, PHYSICS_DT, RESPAWN_FALL_Y } from '@/config/constants'
 import { GADGETS } from '@/config/gadgets'
 import type { NetIdentity, NetStatus, NetworkTransport } from '@/lib/networking/types'
 import { PhysicsWorld, initPhysics } from '@/game/physics/PhysicsWorld'
@@ -644,6 +644,7 @@ export class Engine {
       rigidBodies: this.physics.world.bodies.len(),
       colliders: this.physics.world.colliders.len(),
       players: this.network.playerCount,
+      simTime: +(this.physics.steps * PHYSICS_DT).toFixed(3),
       lastCrash: this.lastCrash,
     }
   }
