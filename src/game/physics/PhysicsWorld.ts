@@ -26,6 +26,12 @@ export type IntersectionHandler = (colliderA: number, colliderB: number, started
  * applied in lockstep with the solver.
  */
 export class PhysicsWorld {
+  /**
+   * The initialised Rapier module. Exposed so tools and tests build descriptors
+   * against the same wasm instance the world was created from — importing the
+   * package again gives an uninitialised copy.
+   */
+  readonly rapier = RAPIER
   readonly world: RAPIER.World
   private readonly eventQueue: RAPIER.EventQueue
   private accumulator = 0

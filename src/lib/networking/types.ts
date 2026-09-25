@@ -44,6 +44,15 @@ export type NetMessage =
       sev: number
       /** true when the impact was against another player */
       pvp: boolean
+      /**
+       * The player that was hit, when known. Each client simulates only its own
+       * car, so without this the victim barely reacts: their copy of the
+       * attacker is a interpolation-delayed proxy that arrives after the
+       * attacker has already stopped. The victim applies the reported hit.
+       */
+      target?: string
+      /** World-space direction the victim should be shoved. */
+      dir?: [number, number, number]
     }
   | {
       t: 'gadget'

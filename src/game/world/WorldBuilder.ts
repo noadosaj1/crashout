@@ -47,6 +47,14 @@ export interface BuiltWorld {
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1)
 const UNIT_CYLINDER = new THREE.CylinderGeometry(0.5, 0.5, 1, 12)
 const UNIT_CONE = new THREE.ConeGeometry(0.5, 1, 10)
+/** Four-sided cone rotated so its base is an axis-aligned square: a hipped roof. */
+const UNIT_PYRAMID = (() => {
+  const g = new THREE.ConeGeometry(0.5, 1, 4)
+  g.rotateY(Math.PI / 4)
+  return g
+})()
+/** Base half-width of UNIT_PYRAMID after that rotation, for scaling to a footprint. */
+const PYRAMID_HALF = 0.5 / Math.SQRT2
 
 /**
  * Builds the whole city: ground, roads, five districts, a highway ring and a
@@ -210,17 +218,16 @@ export class WorldBuilder {
   ): void {
     this.slope(x, z, width, length, height, rotY)
     if (!symmetric) return
-    // Mirror about the crest: shift the back slope so both peaks coincide.
-    const crestX = x + Math.sin(rotY) * length
-    const crestZ = z + Math.cos(rotY) * length
-    const backRot = rotY + Math.PI
+    // `slope` is positioned by its midpoint and peaks half a length ahead, so
+    // the mirrored slab's midpoint sits a full length ahead for the two crests
+    // to meet. Half that distance leaves them crossed in an X.
     this.slope(
-      crestX + Math.sin(backRot) * length,
-      crestZ + Math.cos(backRot) * length,
+      x + Math.sin(rotY) * length,
+      z + Math.cos(rotY) * length,
       width,
       length,
       height,
-      backRot,
+      rotY + Math.PI,
     )
   }
 
@@ -449,7 +456,9 @@ export class WorldBuilder {
         for (let i = 0; i < towers; i++) {
           const w = 16 + rng() * 22
           const d = 16 + rng() * 22
-          const h = 18 + rng() * (Math.abs(gx) + Math.abs(gz) < 2 ? 78 : 40)
+          // Capped well below the Spire: any taller and the streets between
+          // them never see the sun.
+          const h = 16 + rng() * (Math.abs(gx) + Math.abs(gz) < 2 ? 44 : 26)
           const ox = (rng() - 0.5) * (blockHalf - w / 2) * 1.4
           const oz = (rng() - 0.5) * (blockHalf - d / 2) * 1.4
           const key = rng() < 0.35 ? 'tower_glass' : rng() < 0.5 ? 'tower_a' : 'tower_b'
@@ -460,6 +469,22 @@ export class WorldBuilder {
                 ? this.materials.buildingA
                 : this.materials.buildingB
           this.staticBox(key, material, cx + ox, h / 2, cz + oz, w, h, d)
+          // Window bands. Non-colliding decoration that turns a grey box into a
+          // building at almost no cost — they share one instanced mesh.
+          const floors = Math.max(2, Math.floor((h - 6) / 5))
+          for (let f = 0; f < floors; f++) {
+            const y = 5 + f * ((h - 6) / floors)
+            this.addInstance(
+              'windows',
+              UNIT_BOX,
+              this.materials.windowBand,
+              new THREE.Vector3(cx + ox, y, cz + oz),
+              new THREE.Vector3(w + 0.12, 2.1, d + 0.12),
+              undefined,
+              false,
+              false,
+            )
+          }
           // Podium lip — something to clip a mirror on.
           this.staticBox('podium', this.materials.concrete, cx + ox, 1.2, cz + oz, w + 3, 2.4, d + 3)
         }
@@ -468,6 +493,18 @@ export class WorldBuilder {
 
     // The Spire landmark.
     this.staticBox('tower_glass', this.materials.glassFacade, 44, 70, 44, 26, 140, 26)
+    for (let f = 0; f < 22; f++) {
+      this.addInstance(
+        'windows',
+        UNIT_BOX,
+        this.materials.windowBand,
+        new THREE.Vector3(44, 8 + f * 6, 44),
+        new THREE.Vector3(26.15, 2.6, 26.15),
+        undefined,
+        false,
+        false,
+      )
+    }
     this.staticBox('podium', this.materials.concrete, 44, 3, 44, 40, 6, 40)
 
     // Street furniture along the avenues — cheap, satisfying things to hit.
@@ -495,14 +532,17 @@ export class WorldBuilder {
           const d = 10 + rng() * 4
           const h = 5 + rng() * 3
           this.staticBox('house', this.materials.house, x, h / 2, hz, w, h, d)
-          // Roof: a flattened, rotated box reads as a pitched roof at speed.
+          const roofHeight = 2.6
           this.addInstance(
             'house_roof',
-            UNIT_BOX,
+            UNIT_PYRAMID,
             this.materials.roofTile,
-            new THREE.Vector3(x, h + 1.1, hz),
-            new THREE.Vector3(w + 1.2, 2.4, d + 1.2),
-            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 4),
+            new THREE.Vector3(x, h + roofHeight / 2, hz),
+            new THREE.Vector3(
+              (w + 1.2) / (PYRAMID_HALF * 2),
+              roofHeight,
+              (d + 1.2) / (PYRAMID_HALF * 2),
+            ),
           )
           // Driveway.
           this.surfaces.paintRect(x, hz - side * (d / 2 + 5), 3.2, 5, SURFACE.CONCRETE)
@@ -702,7 +742,7 @@ export class WorldBuilder {
     this.addInstance(
       'arena_floor',
       UNIT_BOX,
-      this.materials.concrete,
+      this.materials.arenaFloor,
       new THREE.Vector3(cx, 0.04, cz),
       new THREE.Vector3(half * 2, 0.08, half * 2),
       undefined,
@@ -736,11 +776,11 @@ export class WorldBuilder {
       }
     }
 
-    // Four big launchers arranged so you can start in the middle and fire
-    // yourself outward in any direction.
+    // Four big humps around the middle. Symmetric, so whichever way you come
+    // into the arena you get air rather than a wall in the face.
     for (let i = 0; i < 4; i++) {
       const a = (i * Math.PI) / 2
-      this.ramp(cx + Math.sin(a) * 34, cz + Math.cos(a) * 34, 22, 30, 9, a)
+      this.ramp(cx + Math.sin(a) * 40, cz + Math.cos(a) * 40, 24, 26, 8.5, a, true)
     }
 
     // Ring of humps, symmetric so they work whichever way you cross them.

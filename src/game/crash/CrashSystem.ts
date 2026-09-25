@@ -30,6 +30,7 @@ interface PendingCrash {
   ny: number
   nz: number
   vehicleToVehicle: boolean
+  otherPlayerId: string | null
   prop: WorldProp | null
 }
 
@@ -47,6 +48,8 @@ interface PendingCrash {
  */
 export class CrashSystem {
   private readonly vehiclesByCollider = new Map<number, Vehicle>()
+  /** Remote players' collider handles, so a hit can name who it was against. */
+  private remotePlayersByCollider: ReadonlyMap<number, string> = new Map()
   private readonly pending = new Map<string, PendingCrash>()
   /** Per-vehicle lockout so grinding along a wall does not shred the car. */
   private readonly cooldowns = new Map<string, number>()
@@ -67,6 +70,11 @@ export class CrashSystem {
     this.camera = deps.camera
     this.audio = deps.audio
     this.world = deps.world
+  }
+
+  /** Supplied by the network client; maps remote collider handles to player ids. */
+  setRemoteColliders(map: ReadonlyMap<number, string>): void {
+    this.remotePlayersByCollider = map
   }
 
   setLocalVehicle(vehicle: Vehicle | null): void {
@@ -97,12 +105,14 @@ export class CrashSystem {
     const b = this.vehiclesByCollider.get(colliderB)
     if (!a && !b) return
 
-    const vehicleToVehicle = !!a && !!b
+    const remoteA = this.remotePlayersByCollider.get(colliderA) ?? null
+    const remoteB = this.remotePlayersByCollider.get(colliderB) ?? null
+    const vehicleToVehicle = (!!a && !!b) || !!remoteA || !!remoteB
     const propA = this.world?.propColliders.get(colliderA) ?? null
     const propB = this.world?.propColliders.get(colliderB) ?? null
 
-    if (a) this.record(a, magnitude, dirX, dirY, dirZ, vehicleToVehicle, propB)
-    if (b) this.record(b, magnitude, -dirX, -dirY, -dirZ, vehicleToVehicle, propA)
+    if (a) this.record(a, magnitude, dirX, dirY, dirZ, vehicleToVehicle, remoteB, propB)
+    if (b) this.record(b, magnitude, -dirX, -dirY, -dirZ, vehicleToVehicle, remoteA, propA)
   }
 
   private record(
@@ -112,11 +122,12 @@ export class CrashSystem {
     ny: number,
     nz: number,
     vehicleToVehicle: boolean,
+    otherPlayerId: string | null,
     prop: WorldProp | null,
   ): void {
     const existing = this.pending.get(vehicle.id)
     if (existing && existing.force >= force) return
-    this.pending.set(vehicle.id, { vehicle, force, nx, ny, nz, vehicleToVehicle, prop })
+    this.pending.set(vehicle.id, { vehicle, force, nx, ny, nz, vehicleToVehicle, otherPlayerId, prop })
   }
 
   /** Call once per frame, after physics has advanced. */
@@ -180,6 +191,7 @@ export class CrashSystem {
       local: vehicle.id === this.localVehicleId,
       vehicleToVehicle: crash.vehicleToVehicle,
       vehicleId: vehicle.id,
+      otherPlayerId: crash.otherPlayerId,
     })
   }
 

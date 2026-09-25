@@ -28,6 +28,8 @@ export interface NetworkCallbacks {
   onRoster: (players: RemotePlayerInfo[]) => void
   onStatus: (status: NetStatus) => void
   onChat: (from: string, text: string) => void
+  /** Another player reports they rammed us. See the `crash` message docs. */
+  onIncomingHit: (from: string, severity: number, dir: [number, number, number]) => void
 }
 
 const SEND_INTERVAL = 1 / NET_TICK_HZ
@@ -58,6 +60,8 @@ export class NetworkClient {
   private rosterTimer = 0
   /** Colliders owned by remote cars, so the crash system can classify contacts. */
   readonly remoteColliders = new Map<number, RemoteVehicle>()
+  /** The same mapping, flattened to player ids for the crash system. */
+  readonly remotePlayerByCollider = new Map<number, string>()
 
   constructor(physics: PhysicsWorld, scene: THREE.Scene) {
     this.physics = physics
@@ -107,10 +111,9 @@ export class NetworkClient {
     this.unsubscribers = []
     if (this.transport) await this.transport.disconnect()
     this.transport = null
-    for (const remote of this.remotes.values()) {
-      this.remoteColliders.delete(remote.collider.handle)
-      remote.dispose(this.scene)
-    }
+    for (const remote of this.remotes.values()) remote.dispose(this.scene)
+    this.remoteColliders.clear()
+    this.remotePlayerByCollider.clear()
     this.remotes.clear()
     this.pendingLook.clear()
     this.callbacks?.onRoster([])
@@ -128,7 +131,13 @@ export class NetworkClient {
     })
   }
 
-  broadcastCrash(position: THREE.Vector3, severity: number, pvp: boolean): void {
+  broadcastCrash(
+    position: THREE.Vector3,
+    severity: number,
+    pvp: boolean,
+    target: string | null,
+    direction: THREE.Vector3 | null,
+  ): void {
     if (!this.transport || !this.identity) return
     this.transport.send({
       t: 'crash',
@@ -136,6 +145,8 @@ export class NetworkClient {
       p: [position.x, position.y, position.z],
       sev: severity,
       pvp,
+      ...(target ? { target } : {}),
+      ...(direction ? { dir: [direction.x, direction.y, direction.z] as [number, number, number] } : {}),
     })
   }
 
@@ -166,6 +177,7 @@ export class NetworkClient {
           if (!existing.setAppearance(message.look)) {
             // Different car: rebuild.
             this.remoteColliders.delete(existing.collider.handle)
+            this.remotePlayerByCollider.delete(existing.collider.handle)
             existing.dispose(this.scene)
             this.remotes.delete(message.id)
             this.ensureRemote(message.id)
@@ -189,6 +201,7 @@ export class NetworkClient {
         const remote = this.remotes.get(message.id)
         if (remote) {
           this.remoteColliders.delete(remote.collider.handle)
+          this.remotePlayerByCollider.delete(remote.collider.handle)
           remote.dispose(this.scene)
           this.remotes.delete(message.id)
         }
@@ -209,10 +222,15 @@ export class NetworkClient {
       case 'chat':
         this.callbacks?.onChat(message.name, message.text)
         break
-      case 'crash':
+      case 'crash': {
+        // A hit aimed at us: apply it. Everything else is advisory — our own
+        // sim already shows collisions, because remote cars are real bodies.
+        if (message.target && message.target === this.identity?.playerId && message.dir) {
+          this.callbacks?.onIncomingHit(message.id, message.sev, message.dir)
+        }
+        break
+      }
       case 'race':
-        // Crash and race events are advisory; the local sim already shows the
-        // collision because remote cars are real kinematic bodies.
         break
     }
   }
@@ -239,6 +257,7 @@ export class NetworkClient {
     this.object.add(remote.object)
     this.remotes.set(playerId, remote)
     this.remoteColliders.set(remote.collider.handle, remote)
+    this.remotePlayerByCollider.set(remote.collider.handle, playerId)
     return remote
   }
 
@@ -249,6 +268,7 @@ export class NetworkClient {
     for (const [id, remote] of [...this.remotes]) {
       if (remote.isStale(this.clock)) {
         this.remoteColliders.delete(remote.collider.handle)
+        this.remotePlayerByCollider.delete(remote.collider.handle)
         remote.dispose(this.scene)
         this.remotes.delete(id)
         continue

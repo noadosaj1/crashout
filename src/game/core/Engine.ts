@@ -18,6 +18,7 @@ import { GadgetSystem } from '@/game/gadgets/GadgetSystem'
 import { ActivitySystem, type ActivityResult, type ActivityRunState } from '@/game/missions/ActivitySystem'
 import { NetworkClient, type RemotePlayerInfo } from '@/game/multiplayer/NetworkClient'
 import { createSky } from '@/game/world/Sky'
+import { regionFromLocalDirection } from '@/game/vehicles/damage'
 import { gameEvents } from './GameEvents'
 
 export interface HudSnapshot {
@@ -51,7 +52,7 @@ export interface EngineCallbacks {
 const HUD_INTERVAL = 1 / 12
 
 /** Sun direction, kept high so streets between towers stay readable. */
-const SUN_OFFSET = new THREE.Vector3(150, 420, 110)
+const SUN_OFFSET = new THREE.Vector3(95, 520, 70)
 
 /**
  * Owns the renderer, the physics world and every gameplay system, and runs the
@@ -93,8 +94,12 @@ export class Engine {
   private readonly sun: THREE.DirectionalLight
   private readonly disposers: Array<() => void> = []
   private readonly tmpVec = new THREE.Vector3()
+  private readonly tmpVec2 = new THREE.Vector3()
   /** Most recent local crash, for debugging and the probe. */
   private lastCrash: { severity: number; deltaV: number; region: string } | null = null
+  /** Guards against double-counting a player-versus-player hit we also felt. */
+  private lastPvpHitAt = 0
+  private spawnIndex = 0
   /** Input for the current frame, read by the fixed-step physics callback. */
   private stepInput = this.input.state
 
@@ -117,7 +122,7 @@ export class Engine {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.15
+    this.renderer.toneMappingExposure = 1.02
 
     this.physics = new PhysicsWorld()
     this.camera = new ChaseCamera(this.physics, (canvas.clientWidth || 16) / (canvas.clientHeight || 9))
@@ -128,16 +133,16 @@ export class Engine {
 
     // Sky/ground hemisphere does most of the fill. Downtown is full of 90m
     // towers, so without a strong ambient term the streets read as black.
-    const hemisphere = new THREE.HemisphereLight(0xcfe4f5, 0x6b6558, 2.0)
+    const hemisphere = new THREE.HemisphereLight(0xc6dcee, 0x6e6250, 1.0)
     this.scene.add(hemisphere)
-    this.scene.add(new THREE.AmbientLight(0xa8c4dc, 0.55))
+    this.scene.add(new THREE.AmbientLight(0x93b0c8, 0.22))
 
     // A dim opposite-side fill keeps shaded faces from flattening out.
-    const fill = new THREE.DirectionalLight(0x9fc0e0, 0.5)
+    const fill = new THREE.DirectionalLight(0x8fb4d8, 0.42)
     fill.position.set(-160, 120, -180)
     this.scene.add(fill)
 
-    this.sun = new THREE.DirectionalLight(0xfff2dc, 2.5)
+    this.sun = new THREE.DirectionalLight(0xfff3dc, 2.6)
     this.sun.position.copy(SUN_OFFSET)
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(2048, 2048)
@@ -156,7 +161,15 @@ export class Engine {
 
     const sky = createSky()
     this.scene.add(sky.object)
-    this.disposers.push(sky.dispose)
+    // Image-based lighting from the sky itself: metals get something to
+    // reflect, and shaded faces pick up sky colour instead of going black.
+    const environment = sky.buildEnvironment(this.renderer)
+    this.scene.environment = environment
+    this.scene.environmentIntensity = 0.72
+    this.disposers.push(() => {
+      environment.dispose()
+      sky.dispose()
+    })
 
     // --- World -------------------------------------------------------------
     const builder = new WorldBuilder(this.physics)
@@ -170,6 +183,7 @@ export class Engine {
     this.network = new NetworkClient(this.physics, this.scene)
 
     this.physics.setContactHandler(this.crash.onContactForce)
+    this.crash.setRemoteColliders(this.network.remotePlayerByCollider)
     this.crash.attach({
       particles: this.particles,
       camera: this.camera,
@@ -196,6 +210,7 @@ export class Engine {
       onChat: (from, text) => {
         gameEvents.emit('notify', { text: `${from}: ${text}`, tone: 'info', ttl: 5 })
       },
+      onIncomingHit: (_from, severity, dir) => this.applyIncomingHit(severity, dir),
     })
 
     this.activities.onFinish = (result) => this.callbacks?.onActivityFinished(result)
@@ -206,7 +221,17 @@ export class Engine {
         this.lastCrash = { severity: +event.severity.toFixed(3), deltaV: +event.deltaV.toFixed(2), region: event.region }
         this.statDelta.crashes++
         this.statDelta.biggestCrash = Math.max(this.statDelta.biggestCrash, event.deltaV)
-        this.network.broadcastCrash(event.position, event.severity, event.vehicleToVehicle)
+        if (event.vehicleToVehicle) this.lastPvpHitAt = performance.now()
+        // The victim is shoved along our travel direction, which is the
+        // opposite of the direction we were shoved.
+        this.tmpVec.copy(this.localVehicle?.impactDirection ?? event.normal).multiplyScalar(-1)
+        this.network.broadcastCrash(
+          event.position,
+          event.severity,
+          event.vehicleToVehicle,
+          event.otherPlayerId,
+          event.otherPlayerId ? this.tmpVec : null,
+        )
       }),
     )
 
@@ -230,8 +255,19 @@ export class Engine {
 
   // ------------------------------------------------------------ local player
 
+  /**
+   * Picks a spawn slot from the player's id. Everyone landing on the same tile
+   * makes two cars overlap, and Rapier resolves that by firing them into the
+   * air.
+   */
+  setSpawnSlotFor(playerId: string): void {
+    let hash = 0
+    for (let i = 0; i < playerId.length; i++) hash = (hash * 31 + playerId.charCodeAt(i)) | 0
+    this.spawnIndex = Math.abs(hash) % DEFAULT_SPAWNS.length
+  }
+
   /** Spawns or replaces the local car. Safe to call mid-session. */
-  spawnLocalVehicle(owned: OwnedVehicle, spawnIndex = 0): Vehicle {
+  spawnLocalVehicle(owned: OwnedVehicle, spawnIndex = this.spawnIndex): Vehicle {
     const spec = getVehicleSpec(owned.specId)
     const spawn = DEFAULT_SPAWNS[spawnIndex % DEFAULT_SPAWNS.length]
 
@@ -409,6 +445,47 @@ export class Engine {
       this.hudAccumulator = 0
       this.publishHud()
     }
+  }
+
+  /**
+   * A remote player reports ramming us. Each client only simulates its own car,
+   * and their proxy of us arrives interpolation-delayed, so without this the
+   * victim of a ram barely moves while the attacker bounces off. Applying the
+   * reported hit makes contact feel mutual on both screens.
+   */
+  private applyIncomingHit(severity: number, dir: [number, number, number]): void {
+    const vehicle = this.localVehicle
+    if (!vehicle) return
+    // Our own physics may already have registered this collision; do not
+    // punish the same impact twice.
+    if (performance.now() - this.lastPvpHitAt < 600) return
+
+    const clamped = Math.min(1, Math.max(0, severity))
+    this.tmpVec.set(dir[0], dir[1], dir[2])
+    if (this.tmpVec.lengthSq() < 1e-6) return
+    this.tmpVec.normalize()
+
+    // Scaled by our own mass so a hit shoves a hatchback further than a truck.
+    const impulse = clamped * vehicle.spec.mass * 9
+    vehicle.body.applyImpulse(
+      { x: this.tmpVec.x * impulse, y: Math.abs(this.tmpVec.y) * impulse * 0.2 + impulse * 0.08, z: this.tmpVec.z * impulse },
+      true,
+    )
+
+    vehicle.localDirection(this.tmpVec, this.tmpVec2)
+    const region = regionFromLocalDirection(-this.tmpVec2.x, -this.tmpVec2.y, -this.tmpVec2.z)
+    vehicle.applyDamage(region, clamped * 0.9)
+
+    this.camera.addShake(0.3 + clamped)
+    this.particles.sparks(vehicle.position, this.tmpVec, clamped)
+    if (clamped > 0.2) this.particles.debris(vehicle.position, clamped, vehicle.mesh.bodyMaterial.color.getHex())
+    this.audio.playImpact(vehicle.position, clamped, true)
+    this.lastPvpHitAt = performance.now()
+    // Recorded directly rather than emitted on the bus: re-emitting would
+    // bounce the hit straight back to the attacker.
+    this.lastCrash = { severity: clamped, deltaV: clamped * 17, region }
+    this.statDelta.crashes++
+    gameEvents.emit('notify', { text: 'RAMMED!', tone: 'warn', ttl: 1.4 })
   }
 
   private recoverVehicle(): void {

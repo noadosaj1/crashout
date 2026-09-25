@@ -4,7 +4,12 @@ import * as THREE from 'three'
  * A gradient sky dome with a soft sun disc. Cheaper than a skybox texture and it
  * matches the fog colour exactly, so the horizon never shows a seam.
  */
-export function createSky(): { object: THREE.Object3D; dispose: () => void } {
+export function createSky(): {
+  object: THREE.Object3D
+  /** Builds a matching environment map for image-based lighting. */
+  buildEnvironment: (renderer: THREE.WebGLRenderer) => THREE.Texture
+  dispose: () => void
+} {
   const geometry = new THREE.SphereGeometry(1600, 24, 16)
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -14,7 +19,7 @@ export function createSky(): { object: THREE.Object3D; dispose: () => void } {
       topColor: { value: new THREE.Color(0x3f78b8) },
       horizonColor: { value: new THREE.Color(0xa9cbe4) },
       bottomColor: { value: new THREE.Color(0x6b6f68) },
-      sunDirection: { value: new THREE.Vector3(150, 420, 110).normalize() },
+      sunDirection: { value: new THREE.Vector3(95, 520, 70).normalize() },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldDirection;
@@ -53,6 +58,24 @@ export function createSky(): { object: THREE.Object3D; dispose: () => void } {
 
   return {
     object: mesh,
+    /**
+     * Without an environment map every metallic surface reflects nothing and
+     * renders black — which is what happened to an entire downtown of
+     * glass-faced towers. Pre-filtering the sky dome gives all of them
+     * something plausible to reflect, and lifts shaded faces at the same time.
+     */
+    buildEnvironment: (renderer) => {
+      const pmrem = new THREE.PMREMGenerator(renderer)
+      pmrem.compileEquirectangularShader()
+      const envScene = new THREE.Scene()
+      const dome = new THREE.Mesh(geometry, material)
+      dome.frustumCulled = false
+      envScene.add(dome)
+      const target = pmrem.fromScene(envScene, 0, 1, 2000)
+      envScene.remove(dome)
+      pmrem.dispose()
+      return target.texture
+    },
     dispose: () => {
       geometry.dispose()
       material.dispose()

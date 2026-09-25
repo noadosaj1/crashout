@@ -14,6 +14,8 @@ export interface CrashEvent {
   /** True when the other body was another vehicle rather than world geometry. */
   vehicleToVehicle: boolean
   vehicleId: string
+  /** The other player's id when this was a player-versus-player hit. */
+  otherPlayerId: string | null
 }
 
 export interface NotificationEvent {

@@ -6,6 +6,7 @@ import { Engine, type HudSnapshot } from '@/game/core/Engine'
 import { gameEvents } from '@/game/core/GameEvents'
 import type { ActivityResult } from '@/game/missions/ActivitySystem'
 import { createTransport, generateSessionCode } from '@/lib/networking/createTransport'
+import { getClientId } from '@/lib/networking/clientId'
 import type { NetworkTransport } from '@/lib/networking/types'
 import type { PersistenceAdapter, PlayerSave } from '@/lib/persistence/types'
 import { useGameStore } from '@/store/gameStore'
@@ -84,6 +85,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
           },
         })
 
+        engine.setSpawnSlotFor(getClientId())
         const activeId = initialSave.profile.activeVehicleId
         const owned = initialSave.vehicles.find((v) => v.id === activeId) ?? initialSave.vehicles[0]
         engine.spawnLocalVehicle(owned)
@@ -259,7 +261,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
       if (!engine || !transport) throw new Error('Game is still starting up')
       const code = generateSessionCode()
       await engine.connectMultiplayer(transport, code, {
-        playerId: saveRef.current.profile.id,
+        playerId: getClientId(),
         username: saveRef.current.profile.username,
       })
       patchSession({ code })
@@ -274,7 +276,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
         const transport = transportRef.current
         if (!engine || !transport) throw new Error('Game is still starting up')
         await engine.connectMultiplayer(transport, code, {
-          playerId: saveRef.current.profile.id,
+          playerId: getClientId(),
           username: saveRef.current.profile.username,
         })
         patchSession({ code })
