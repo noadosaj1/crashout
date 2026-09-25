@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { GadgetId, PlayerStats } from '@/types'
-import type { PersistenceAdapter, PlayerSave } from '@/lib/persistence/types'
+import type { PlayerStats } from '@/types'
+import type { PlayerSave } from '@/lib/persistence/types'
 import type { HudSnapshot } from '@/game/core/Engine'
 import type { NetStatus } from '@/lib/networking/types'
 
@@ -42,7 +42,6 @@ interface GameState {
   phase: Phase
   overlay: Overlay
   save: PlayerSave | null
-  adapter: PersistenceAdapter | null
   hud: HudSnapshot | null
   notifications: Notification[]
   results: ResultsPayload | null
@@ -54,7 +53,6 @@ interface GameState {
   setPhase: (phase: Phase) => void
   setOverlay: (overlay: Overlay) => void
   setSave: (save: PlayerSave) => void
-  setAdapter: (adapter: PersistenceAdapter) => void
   setHud: (hud: HudSnapshot) => void
   pushNotification: (text: string, tone: Notification['tone'], ttl?: number) => void
   expireNotifications: (now: number) => void
@@ -84,7 +82,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   phase: 'boot',
   overlay: null,
   save: null,
-  adapter: null,
   hud: null,
   notifications: [],
   results: null,
@@ -102,7 +99,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPhase: (phase) => set({ phase }),
   setOverlay: (overlay) => set({ overlay }),
   setSave: (save) => set({ save }),
-  setAdapter: (adapter) => set({ adapter }),
   setHud: (hud) =>
     set((state) => ({
       hud,
@@ -145,7 +141,3 @@ export const useGameStore = create<GameState>((set, get) => ({
       return { save: { ...state.save, stats: { ...state.save.stats, ...delta } } }
     }),
 }))
-
-export function ownedGadgets(save: PlayerSave | null): GadgetId[] {
-  return save?.gadgets ?? []
-}

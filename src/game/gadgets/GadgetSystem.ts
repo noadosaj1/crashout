@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import type { GadgetId } from '@/types'
 import { GADGETS } from '@/config/gadgets'
-import { gameEvents } from '@/game/core/GameEvents'
 import type { Vehicle } from '@/game/vehicles/Vehicle'
 import type { ParticleSystem } from '@/game/effects/ParticleSystem'
 import type { AudioSystem } from '@/game/audio/AudioSystem'
@@ -95,7 +94,6 @@ export class GadgetSystem {
     this.spawn(id, gadgetId, position, heading, vehicle.id)
     this.audio?.playGadget()
     this.broadcast?.({ id, gadgetId, position, heading })
-    gameEvents.emit('gadget-used', { gadgetId, position: [position.x, position.y, position.z] })
     return true
   }
 

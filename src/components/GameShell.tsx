@@ -436,6 +436,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
 
       {overlay === 'pause' && (
         <PauseMenu
+          saveKind={adapter.kind}
           onResume={() => setOverlay(null)}
           onOpen={(next) => setOverlay(next)}
           onQuit={() => {

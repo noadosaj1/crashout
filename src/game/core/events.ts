@@ -1,5 +1,5 @@
 import type * as THREE from 'three'
-import type { DamageRegion, GadgetId } from '@/types'
+import type { DamageRegion } from '@/types'
 
 export interface CrashEvent {
   /** Normalised 0..1 severity used for effects and scoring. */
@@ -25,13 +25,11 @@ export interface NotificationEvent {
   ttl?: number
 }
 
+/**
+ * Every event here has at least one subscriber. Adding one nothing listens to
+ * is how an event bus turns into a graveyard.
+ */
 export interface GameEvents {
   crash: CrashEvent
   notify: NotificationEvent
-  'credits-awarded': { amount: number; reason: string }
-  'activity-started': { activityId: string }
-  'activity-finished': { activityId: string; success: boolean; reward: number }
-  'gadget-used': { gadgetId: GadgetId; position: [number, number, number] }
-  'vehicle-recovered': { vehicleId: string }
-  'stat-delta': { distance?: number; crashes?: number; biggestCrash?: number }
 }

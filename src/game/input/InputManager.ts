@@ -40,7 +40,8 @@ export class InputManager {
   private keys = new Set<string>()
   private steerAxis = 0
   private edge = { recover: false, gadget: false, resetCamera: false }
-  private consumed = { recover: false, gadget: false, resetCamera: false }
+  /** Gamepad button edge tracking: pads report level, we want the press. */
+  private consumed = { recover: false, gadget: false }
   private enabled = true
   private gamepadIndex: number | null = null
   readonly state: DriveInput = { ...EMPTY }

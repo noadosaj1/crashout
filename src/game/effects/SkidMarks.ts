@@ -18,7 +18,6 @@ export class SkidMarks {
   private readonly mesh: THREE.InstancedMesh
   private readonly geometry: THREE.PlaneGeometry
   private readonly material: THREE.MeshBasicMaterial
-  private readonly alpha: Float32Array
   private readonly colorAttr: THREE.InstancedBufferAttribute
   private cursor = 0
   private used = 0
@@ -44,7 +43,6 @@ export class SkidMarks {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.mesh.frustumCulled = false
     this.mesh.count = 0
-    this.alpha = new Float32Array(MAX_MARKS)
     this.colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(MAX_MARKS * 3), 3)
     this.mesh.instanceColor = this.colorAttr
     this.object = this.mesh
@@ -81,7 +79,6 @@ export class SkidMarks {
     // Harder slides leave darker rubber.
     const shade = 0.34 - Math.min(1, intensity) * 0.22
     this.colorAttr.setXYZ(i, shade, shade, shade)
-    this.alpha[i] = Math.min(1, intensity)
     this.cursor = (this.cursor + 1) % MAX_MARKS
     this.used = Math.min(MAX_MARKS, this.used + 1)
     this.mesh.count = this.used
@@ -95,13 +92,6 @@ export class SkidMarks {
     for (const key of this.lastPos.keys()) {
       if (key.startsWith(keyPrefix)) this.lastPos.delete(key)
     }
-  }
-
-  clear(): void {
-    this.used = 0
-    this.cursor = 0
-    this.mesh.count = 0
-    this.lastPos.clear()
   }
 
   dispose(): void {

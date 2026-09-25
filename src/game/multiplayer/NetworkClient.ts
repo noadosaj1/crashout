@@ -297,7 +297,6 @@ export class NetworkClient {
     const t = vehicle.body.translation()
     const r = vehicle.body.rotation()
     const v = vehicle.body.linvel()
-    const a = vehicle.body.angvel()
     // Round to 3 decimals: the payload halves and nobody can see the difference.
     const r3 = (n: number): number => Math.round(n * 1000) / 1000
     this.transport.send({
@@ -308,7 +307,6 @@ export class NetworkClient {
         p: [r3(t.x), r3(t.y), r3(t.z)],
         q: [r3(r.x), r3(r.y), r3(r.z), r3(r.w)],
         v: [r3(v.x), r3(v.y), r3(v.z)],
-        a: [r3(a.x), r3(a.y), r3(a.z)],
         s: r3(vehicle.steer),
         d: Math.round(vehicle.damageLevel * 100) / 100,
         b: vehicle.isBoosting ? 1 : 0,

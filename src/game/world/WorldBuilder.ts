@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier3d-compat'
 import { COLLISION_GROUPS, CRASH_CONTACT_FORCE_GATE, WORLD_BOUNDS } from '@/config/constants'
-import { LANDMARKS, ROADS, ZONES, type RoadDef } from '@/config/world'
+import { ROADS, ZONES, type RoadDef } from '@/config/world'
 import type { PhysicsWorld } from '@/game/physics/PhysicsWorld'
 import { createWorldMaterials, disposeMaterials, type WorldMaterials } from './materials'
 import { SURFACE, SurfaceMap } from './SurfaceMap'
@@ -45,7 +45,8 @@ export interface BuiltWorld {
   /** Colliders that belong to static world geometry, for crash classification. */
   staticColliders: Set<number>
   propColliders: Map<number, WorldProp>
-  landmarks: typeof LANDMARKS
+  /** Puts every prop within `radius` of a point back where it started. */
+  resetPropsNear: (x: number, z: number, radius: number) => void
   dispose: () => void
 }
 
@@ -110,8 +111,25 @@ export class WorldBuilder {
       propBatches: this.propBatches,
       staticColliders: this.staticColliders,
       propColliders: this.propColliders,
-      landmarks: LANDMARKS,
+      resetPropsNear: (x, z, radius) => this.resetPropsNear(x, z, radius),
       dispose: () => this.dispose(),
+    }
+  }
+
+  /**
+   * Stands the scattered props back up. Called when a crash challenge starts so
+   * every run begins with a full arena instead of whatever the last one left.
+   */
+  private resetPropsNear(x: number, z: number, radius: number): void {
+    const radiusSq = radius * radius
+    for (const prop of this.props) {
+      const dx = prop.origin.x - x
+      const dz = prop.origin.z - z
+      if (dx * dx + dz * dz > radiusSq) continue
+      prop.body.setTranslation(prop.origin, true)
+      prop.body.setRotation(prop.originQuat, true)
+      prop.body.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      prop.body.setAngvel({ x: 0, y: 0, z: 0 }, true)
     }
   }
 

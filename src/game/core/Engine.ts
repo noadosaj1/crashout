@@ -1,9 +1,9 @@
 import * as THREE from 'three'
 import type { GadgetId, OwnedVehicle } from '@/types'
 import { getVehicleSpec } from '@/config/vehicles'
+import { ACTIVITIES } from '@/config/activities'
 import { DEFAULT_SPAWNS } from '@/config/world'
 import { MS_TO_KMH, PHYSICS_DT, RESPAWN_FALL_Y } from '@/config/constants'
-import { GADGETS } from '@/config/gadgets'
 import type { NetIdentity, NetStatus, NetworkTransport } from '@/lib/networking/types'
 import { PhysicsWorld, initPhysics } from '@/game/physics/PhysicsWorld'
 import { InputManager } from '@/game/input/InputManager'
@@ -498,7 +498,6 @@ export class Engine {
     vehicle.recover()
     this.skidMarks.breakTrail(vehicle.id)
     this.camera.reset()
-    gameEvents.emit('vehicle-recovered', { vehicleId: vehicle.id })
     gameEvents.emit('notify', { text: 'Vehicle recovered', tone: 'info', ttl: 1.2 })
   }
 
@@ -610,16 +609,18 @@ export class Engine {
   startActivity(activityId: string): boolean {
     const vehicle = this.localVehicle
     if (!vehicle) return false
+    const spec = ACTIVITIES[activityId]
+    // Stand the arena back up so every demolition run starts with a full set of
+    // things to wreck.
+    if (spec?.kind === 'crash_challenge') {
+      const [x, , z] = spec.waypoints[0]
+      this.world.resetPropsNear(x, z, 220)
+    }
     return this.activities.start(activityId, vehicle)
   }
 
   cancelActivity(): void {
     this.activities.stop(false)
-  }
-
-  /** Reads the gadget catalogue for the HUD label. */
-  gadgetName(gadgetId: GadgetId): string {
-    return GADGETS[gadgetId].name
   }
 
   /**

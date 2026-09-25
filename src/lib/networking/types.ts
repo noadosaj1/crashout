@@ -13,8 +13,6 @@ export interface NetVehicleState {
   q: [number, number, number, number]
   /** linear velocity, used for extrapolation between packets */
   v: [number, number, number]
-  /** angular velocity */
-  a: [number, number, number]
   /** steering angle, for wheel visuals */
   s: number
   /** overall damage 0..1 */

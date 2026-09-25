@@ -14,7 +14,6 @@ export default function App() {
   const phase = useGameStore((s) => s.phase)
   const setPhase = useGameStore((s) => s.setPhase)
   const setSave = useGameStore((s) => s.setSave)
-  const setAdapterStore = useGameStore((s) => s.setAdapter)
   const setError = useGameStore((s) => s.setError)
 
   const [adapter, setAdapter] = useState<PersistenceAdapter | null>(null)
@@ -43,7 +42,6 @@ export default function App() {
       try {
         const save = await next.load()
         setAdapter(next)
-        setAdapterStore(next)
         setInitialSave(save)
         setSave(save)
         setPhase('playing')
@@ -52,7 +50,7 @@ export default function App() {
         setPhase('menu')
       }
     },
-    [setPhase, setSave, setAdapterStore, setError],
+    [setPhase, setSave, setError],
   )
 
   const playGuest = useCallback(() => {

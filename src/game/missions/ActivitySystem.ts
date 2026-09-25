@@ -105,7 +105,6 @@ export class ActivitySystem {
     }
 
     this.updateMarker()
-    gameEvents.emit('activity-started', { activityId })
     gameEvents.emit('notify', { text: `${spec.name} started`, tone: 'info' })
     return true
   }
@@ -131,8 +130,6 @@ export class ActivitySystem {
         damage: vehicle ? Math.max(0, vehicle.damageLevel - this.startDamage) : 0,
       }
       this.onFinish?.(result)
-    } else {
-      gameEvents.emit('activity-finished', { activityId: run.activityId, success: false, reward: 0 })
     }
   }
 

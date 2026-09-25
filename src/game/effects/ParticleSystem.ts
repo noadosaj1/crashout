@@ -46,6 +46,7 @@ export class ParticleSystem {
     this.geometry = enableInstanceColors(new THREE.BoxGeometry(1, 1, 1))
     this.material = new THREE.MeshBasicMaterial({
       transparent: true,
+      opacity: 0.95,
       depthWrite: false,
       blending: THREE.NormalBlending,
     })
@@ -264,8 +265,6 @@ export class ParticleSystem {
       this.mesh.instanceMatrix.needsUpdate = true
       this.colorAttr.needsUpdate = true
     }
-    // Smoke needs blending; opacity here is a global dimmer for the whole system.
-    this.material.opacity = 0.95
   }
 
   get count(): number {
