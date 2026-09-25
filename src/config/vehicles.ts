@@ -1,0 +1,187 @@
+import type { VehicleSpec } from '@/types'
+
+/**
+ * All vehicles are fictional. Behaviour differences come purely from this data —
+ * there is no per-car code anywhere in the vehicle system.
+ *
+ * Tuning guide (relative, arcade units):
+ *   acceleration  8..22   how hard it launches
+ *   topSpeed      38..92  m/s (≈140..330 km/h)
+ *   grip          0.75..1.35
+ *   steering      0.45..0.68 rad
+ */
+export const VEHICLES: Record<string, VehicleSpec> = {
+  pico_hatch: {
+    id: 'pico_hatch',
+    name: 'Ravello Pico',
+    category: 'hatchback',
+    price: 0,
+    mass: 980,
+    acceleration: 12.5,
+    topSpeed: 47,
+    steering: 0.66,
+    braking: 15,
+    grip: 1.08,
+    drivetrain: 'fwd',
+    suspension: { restLength: 0.48, stiffness: 34, damping: 3.1, travel: 0.26 },
+    crashResistance: 0.42,
+    dimensions: { halfWidth: 0.82, halfHeight: 0.42, halfLength: 1.72 },
+    wheel: { radius: 0.32, width: 0.2, frontOffsetZ: 1.18, rearOffsetZ: -1.18, offsetX: 0.79 },
+    visual: { roofScale: 0.84, roofOffsetZ: -0.1, noseSlope: 0.18, baseColor: 0x4fb3d9, accent: 0x23313a },
+    audioProfile: { idleHz: 52, redlineHz: 300, timbre: 'rasp' },
+  },
+
+  vantail_gt: {
+    id: 'vantail_gt',
+    name: 'Kestrel Vantail GT',
+    category: 'coupe',
+    price: 32_000,
+    mass: 1340,
+    acceleration: 16.5,
+    topSpeed: 66,
+    steering: 0.58,
+    braking: 19,
+    grip: 1.2,
+    drivetrain: 'rwd',
+    suspension: { restLength: 0.42, stiffness: 42, damping: 3.6, travel: 0.22 },
+    crashResistance: 0.5,
+    dimensions: { halfWidth: 0.92, halfHeight: 0.38, halfLength: 2.05 },
+    wheel: { radius: 0.35, width: 0.24, frontOffsetZ: 1.38, rearOffsetZ: -1.34, offsetX: 0.9 },
+    visual: { roofScale: 0.7, roofOffsetZ: -0.32, noseSlope: 0.3, baseColor: 0xe2564a, accent: 0x1b1b1f },
+    audioProfile: { idleHz: 46, redlineHz: 280, timbre: 'growl' },
+    boost: { force: 5200, capacity: 2.4, regen: 0.32 },
+  },
+
+  brutus_v8: {
+    id: 'brutus_v8',
+    name: 'Halloran Brutus',
+    category: 'muscle',
+    price: 41_000,
+    mass: 1820,
+    acceleration: 19,
+    topSpeed: 62,
+    steering: 0.5,
+    braking: 15,
+    grip: 0.92,
+    drivetrain: 'rwd',
+    suspension: { restLength: 0.5, stiffness: 36, damping: 3.0, travel: 0.28 },
+    crashResistance: 0.72,
+    dimensions: { halfWidth: 1.0, halfHeight: 0.44, halfLength: 2.35 },
+    wheel: { radius: 0.37, width: 0.3, frontOffsetZ: 1.55, rearOffsetZ: -1.5, offsetX: 0.96 },
+    visual: { roofScale: 0.76, roofOffsetZ: -0.24, noseSlope: 0.12, baseColor: 0xf0a52a, accent: 0x151515 },
+    audioProfile: { idleHz: 38, redlineHz: 220, timbre: 'growl' },
+    boost: { force: 7600, capacity: 2.0, regen: 0.26 },
+  },
+
+  meridian_rs: {
+    id: 'meridian_rs',
+    name: 'Aldrin Meridian RS',
+    category: 'sedan',
+    price: 54_000,
+    mass: 1560,
+    acceleration: 17,
+    topSpeed: 70,
+    steering: 0.57,
+    braking: 21,
+    grip: 1.26,
+    drivetrain: 'awd',
+    suspension: { restLength: 0.45, stiffness: 44, damping: 3.9, travel: 0.24 },
+    crashResistance: 0.58,
+    dimensions: { halfWidth: 0.94, halfHeight: 0.44, halfLength: 2.28 },
+    wheel: { radius: 0.35, width: 0.25, frontOffsetZ: 1.5, rearOffsetZ: -1.48, offsetX: 0.92 },
+    visual: { roofScale: 0.88, roofOffsetZ: -0.12, noseSlope: 0.22, baseColor: 0x2f4f8f, accent: 0xcfd6df },
+    audioProfile: { idleHz: 50, redlineHz: 310, timbre: 'whine' },
+    boost: { force: 6000, capacity: 2.6, regen: 0.34 },
+  },
+
+  aerith_x: {
+    id: 'aerith_x',
+    name: 'Nocturne Aerith X',
+    category: 'supercar',
+    price: 168_000,
+    mass: 1290,
+    acceleration: 22,
+    topSpeed: 92,
+    steering: 0.54,
+    braking: 26,
+    grip: 1.35,
+    drivetrain: 'awd',
+    suspension: { restLength: 0.34, stiffness: 54, damping: 4.4, travel: 0.16 },
+    crashResistance: 0.3,
+    dimensions: { halfWidth: 1.0, halfHeight: 0.32, halfLength: 2.2 },
+    wheel: { radius: 0.36, width: 0.3, frontOffsetZ: 1.46, rearOffsetZ: -1.42, offsetX: 0.98 },
+    visual: { roofScale: 0.6, roofOffsetZ: -0.36, noseSlope: 0.42, baseColor: 0x9df02a, accent: 0x101014 },
+    audioProfile: { idleHz: 60, redlineHz: 400, timbre: 'whine' },
+    boost: { force: 8200, capacity: 3.0, regen: 0.4 },
+  },
+
+  tundrak_4x4: {
+    id: 'tundrak_4x4',
+    name: 'Volkov Tundrak 4x4',
+    category: 'suv',
+    price: 47_000,
+    mass: 2250,
+    acceleration: 14,
+    topSpeed: 54,
+    steering: 0.55,
+    braking: 17,
+    grip: 1.06,
+    drivetrain: 'awd',
+    suspension: { restLength: 0.66, stiffness: 40, damping: 3.4, travel: 0.38 },
+    crashResistance: 0.85,
+    dimensions: { halfWidth: 1.04, halfHeight: 0.62, halfLength: 2.3 },
+    wheel: { radius: 0.46, width: 0.32, frontOffsetZ: 1.5, rearOffsetZ: -1.48, offsetX: 1.0 },
+    visual: { roofScale: 0.94, roofOffsetZ: -0.05, noseSlope: 0.06, baseColor: 0x3f6b45, accent: 0x20262a },
+    audioProfile: { idleHz: 40, redlineHz: 230, timbre: 'growl' },
+  },
+
+  packhorse_lt: {
+    id: 'packhorse_lt',
+    name: 'Ridgeline Packhorse',
+    category: 'pickup',
+    price: 29_000,
+    mass: 2050,
+    acceleration: 15,
+    topSpeed: 56,
+    steering: 0.52,
+    braking: 16,
+    grip: 0.95,
+    drivetrain: 'rwd',
+    suspension: { restLength: 0.6, stiffness: 37, damping: 3.2, travel: 0.34 },
+    crashResistance: 0.78,
+    dimensions: { halfWidth: 1.0, halfHeight: 0.5, halfLength: 2.6 },
+    wheel: { radius: 0.42, width: 0.3, frontOffsetZ: 1.7, rearOffsetZ: -1.66, offsetX: 0.98 },
+    visual: { roofScale: 0.5, roofOffsetZ: 0.62, noseSlope: 0.08, baseColor: 0xd8d2c4, accent: 0x33383d },
+    audioProfile: { idleHz: 42, redlineHz: 210, timbre: 'growl' },
+  },
+
+  rustbucket: {
+    id: 'rustbucket',
+    name: 'Corso Ninety-Two',
+    category: 'beater',
+    price: 6_500,
+    mass: 1180,
+    acceleration: 10,
+    topSpeed: 43,
+    steering: 0.6,
+    braking: 12,
+    grip: 0.82,
+    drivetrain: 'fwd',
+    suspension: { restLength: 0.5, stiffness: 26, damping: 2.2, travel: 0.3 },
+    crashResistance: 0.22,
+    dimensions: { halfWidth: 0.88, halfHeight: 0.44, halfLength: 2.1 },
+    wheel: { radius: 0.33, width: 0.2, frontOffsetZ: 1.38, rearOffsetZ: -1.36, offsetX: 0.86 },
+    visual: { roofScale: 0.9, roofOffsetZ: -0.06, noseSlope: 0.14, baseColor: 0x8a7a62, accent: 0x55483a },
+    audioProfile: { idleHz: 34, redlineHz: 180, timbre: 'rasp' },
+  },
+}
+
+export const VEHICLE_LIST = Object.values(VEHICLES)
+
+export const STARTER_VEHICLE_ID = 'pico_hatch'
+
+export function getVehicleSpec(id: string): VehicleSpec {
+  const spec = VEHICLES[id]
+  if (!spec) throw new Error(`Unknown vehicle spec: ${id}`)
+  return spec
+}
