@@ -29,6 +29,9 @@ const _v2 = new THREE.Vector3()
 const _v3 = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 
+/** Closest the collision-avoidance step may pull the camera to the car. */
+const MIN_DISTANCE = 3.4
+
 /**
  * Third-person chase rig. The anchor lags behind the car (so the world swings as
  * you turn), FOV stretches with speed, and a short ray keeps the camera from
@@ -130,9 +133,11 @@ export class ChaseCamera {
         vehicle.body,
       )
       if (hit && hit.timeOfImpact < dist) {
-        const safe = Math.max(1.6, hit.timeOfImpact - 0.4)
+        // Never pull closer than the car is long, or the camera ends up inside
+        // the bodywork and the player sees the cabin from the inside.
+        const safe = Math.max(MIN_DISTANCE, hit.timeOfImpact - 0.5)
         this.current.copy(pos).addScaledVector(toCam, safe)
-        this.current.y += 0.8
+        this.current.y += 0.9
       }
     }
 

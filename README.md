@@ -26,6 +26,7 @@ saves and multiplayer over the internet — see **Backend** below.
 | `Q` | Deploy equipped gadget |
 | `V` | Look back |
 | `C` | Re-centre camera |
+| `T` | Chat (in a multiplayer world) |
 | `Tab` | Challenges |
 | `G` | Garage |
 | `Esc` | Pause menu |
@@ -159,13 +160,26 @@ implementations ship:
 | `LocalBroadcastTransport` | No Supabase | Other tabs on the same machine |
 
 Host a world to get a six-character code; anyone entering it spawns into the same
-city.
+city. Network identity is per browser tab, not per profile — two tabs on one
+machine share a save (so they share a garage) but still appear as two drivers.
+
+With Supabase configured, hosting also writes a row to `sessions`, so joining a
+code nobody is hosting fails cleanly instead of dropping you into an empty city.
+That bookkeeping is best-effort: the Realtime channel is what actually carries
+the session, and play works whether or not the row exists.
 
 Remote cars are kinematic-position-based rigid bodies driven by an interpolation
 buffer played back 120 ms behind real time, so packet jitter never shows. Because
 they are real bodies rather than floating meshes, ramming another player produces
 an actual collision — with damage, sparks and camera shake — on both machines.
 Transforms go out 15 times a second, rounded to millimetres.
+
+One thing does need explicit replication. Because each client simulates only its
+own car, and its copy of the attacker is delayed, the victim of a ram barely
+moved — the attacker bounced off a proxy while the victim felt almost nothing.
+The attacker now names its victim in the crash packet and the victim applies the
+hit, with a short window that stops an impact it also felt locally from counting
+twice.
 
 Each client is authoritative over its own car. That is the right trade for a
 sandbox and the wrong one for a competitive game, which is why nothing about the
@@ -203,5 +217,27 @@ added later if the rights existed.
 npm run dev        Dev server
 npm run build      Typecheck + production build
 npm run lint       oxlint
+npm run test       Unit tests (vitest)
+npm run test:e2e   End-to-end smoke test (needs `npm run dev` running)
+npm run check      lint + build + unit tests
 npm run preview    Serve the production build
 ```
+
+## Tests
+
+`npm run test` covers the pure logic: the damage model and how it feeds back
+into handling, the economy rules and their payout caps, upgrade maths, world
+layout invariants (nothing outside the boundary walls, spawn points far enough
+apart that cars do not overlap) and join-code generation.
+
+`npm run test:e2e` boots the real game in Chromium and drives it: spawn, throttle
+and weight transfer, a 120 km/h head-on that must register as a maximum-severity
+front impact while a gentle bump registers as nothing, recovery from an inverted
+car, an arena ramp launch, gadget cooldowns, a delivery run end to end, buying a
+car from the showroom, and a two-player session that ends with one player ramming
+the other. It waits on simulation state rather than wall time, because under
+software rendering the simulation runs well below real time.
+
+Both suites are also where several of the physics bugs in this repo were found —
+`tests/e2e/smoke.mjs` asserts on wheel loads and impact severities precisely
+because those are the numbers that go wrong silently.

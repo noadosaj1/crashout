@@ -7,12 +7,20 @@ import { gameEvents } from '@/game/core/GameEvents'
 import type { ActivityResult } from '@/game/missions/ActivitySystem'
 import { createTransport, generateSessionCode } from '@/lib/networking/createTransport'
 import { getClientId } from '@/lib/networking/clientId'
+import {
+  findOpenSession,
+  joinSessionRecord,
+  leaveSessionRecord,
+  registerHostedSession,
+  type SessionRecord,
+} from '@/lib/supabase/sessions'
 import type { NetworkTransport } from '@/lib/networking/types'
 import type { PersistenceAdapter, PlayerSave } from '@/lib/persistence/types'
 import { useGameStore } from '@/store/gameStore'
 import { HUD } from './hud/HUD'
 import { Garage } from './garage/Garage'
 import { SessionPanel } from './multiplayer/SessionPanel'
+import { ChatBar } from './multiplayer/ChatBar'
 import { ChallengesPanel } from './menus/ChallengesPanel'
 import { PauseMenu } from './menus/PauseMenu'
 import { SettingsPanel } from './menus/SettingsPanel'
@@ -34,11 +42,15 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const engineRef = useRef<Engine | null>(null)
   const transportRef = useRef<NetworkTransport | null>(null)
+  /** The `sessions` row for the current world, when Supabase is configured. */
+  const sessionRecordRef = useRef<SessionRecord | null>(null)
+  const isHostRef = useRef(false)
   const [ready, setReady] = useState(false)
   const [bootError, setBootError] = useState<string | null>(null)
 
   const save = useGameStore((s) => s.save)
   const overlay = useGameStore((s) => s.overlay)
+  const session = useGameStore((s) => s.session)
   const settings = useGameStore((s) => s.settings)
   const setOverlay = useGameStore((s) => s.setOverlay)
   const setSave = useGameStore((s) => s.setSave)
@@ -264,6 +276,9 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
         playerId: getClientId(),
         username: saveRef.current.profile.username,
       })
+      // Best effort, and only when signed in: the world works either way.
+      sessionRecordRef.current = await registerHostedSession(code, saveRef.current.profile.id)
+      isHostRef.current = true
       patchSession({ code })
       pushNotification(`World ${code} is open`, 'success', 4)
     })
@@ -275,10 +290,21 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
         const engine = engineRef.current
         const transport = transportRef.current
         if (!engine || !transport) throw new Error('Game is still starting up')
+
+        // With a backend we can tell "nobody is hosting that" from "typo".
+        // Without one the code is just a channel name, so we join optimistically.
+        const record = transport.info.remote ? await findOpenSession(code) : null
+        if (transport.info.remote && !record) {
+          throw new Error(`No open world with the code ${code}`)
+        }
+
         await engine.connectMultiplayer(transport, code, {
           playerId: getClientId(),
           username: saveRef.current.profile.username,
         })
+        if (record) await joinSessionRecord(record.id, saveRef.current.profile.id)
+        sessionRecordRef.current = record
+        isHostRef.current = false
         patchSession({ code })
         pushNotification(`Joined world ${code}`, 'success', 4)
       })
@@ -289,6 +315,9 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
   const leaveSession = useCallback(async () => {
     await run(async () => {
       await engineRef.current?.disconnectMultiplayer()
+      await leaveSessionRecord(sessionRecordRef.current, saveRef.current.profile.id, isHostRef.current)
+      sessionRecordRef.current = null
+      isHostRef.current = false
       patchSession({ code: null, status: 'idle', playerCount: 1 })
     })
   }, [run, patchSession])
@@ -394,6 +423,16 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
       )}
 
       {ready && overlay === null && <HUD />}
+      {ready && overlay === null && (
+        <ChatBar
+          enabled={session.code !== null && session.status === 'connected'}
+          onTypingChange={(typing) => engineRef.current?.input.setEnabled(!typing)}
+          onSend={(text) => {
+            engineRef.current?.network.sendChat(text)
+            pushNotification(`${saveRef.current.profile.username}: ${text}`, 'info', 5)
+          }}
+        />
+      )}
 
       {overlay === 'pause' && (
         <PauseMenu

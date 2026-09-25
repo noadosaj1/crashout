@@ -102,7 +102,9 @@ export function Garage(actions: GarageActions) {
               <div>
                 <h3 className="card__title">{selected.nickname ?? spec.name}</h3>
                 <p className="card__subtitle" style={{ margin: 0 }}>
-                  {spec.name} · {spec.category} · {spec.drivetrain.toUpperCase()}
+                  {/* The heading already shows the spec name unless it is renamed. */}
+                  {selected.nickname ? `${spec.name} · ` : ''}
+                  {spec.category} · {spec.drivetrain.toUpperCase()}
                 </p>
               </div>
               {!isActive && (

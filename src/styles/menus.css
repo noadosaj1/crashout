@@ -128,11 +128,18 @@
   padding: 24px;
 }
 .overlay__header {
+  position: sticky;
+  top: -24px;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin: -24px -24px 18px;
+  padding: 24px;
+  /* Panels scroll; the title, balance and close button must stay reachable. */
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--border);
 }
 .overlay__title {
   margin: 0;

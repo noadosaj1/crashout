@@ -27,7 +27,10 @@ interface InstanceBatch {
 
 export interface WorldProp {
   body: RAPIER.RigidBody
-  mesh: THREE.Mesh
+  /** The instanced batch this prop draws in, and its slot within it. */
+  batch: THREE.InstancedMesh
+  index: number
+  scale: THREE.Vector3
   /** Where it started, so the arena can be reset between challenge runs. */
   origin: THREE.Vector3
   originQuat: THREE.Quaternion
@@ -37,6 +40,8 @@ export interface BuiltWorld {
   group: THREE.Group
   surfaces: SurfaceMap
   props: WorldProp[]
+  /** Batches holding dynamic props; their matrices change every frame. */
+  propBatches: THREE.InstancedMesh[]
   /** Colliders that belong to static world geometry, for crash classification. */
   staticColliders: Set<number>
   propColliders: Map<number, WorldProp>
@@ -67,6 +72,11 @@ export class WorldBuilder {
   private readonly materials: WorldMaterials
   private readonly surfaces = new SurfaceMap()
   private readonly props: WorldProp[] = []
+  private readonly propBuckets = new Map<
+    string,
+    { geometry: THREE.BufferGeometry; material: THREE.Material; props: WorldProp[] }
+  >()
+  private readonly propBatches: THREE.InstancedMesh[] = []
   private readonly staticColliders = new Set<number>()
   private readonly propColliders = new Map<number, WorldProp>()
   private readonly rng = mulberry32(0x5eed)
@@ -91,11 +101,13 @@ export class WorldBuilder {
     this.buildArena()
     this.buildBoundaryWalls()
     this.flushBatches()
+    this.flushProps()
 
     return {
       group: this.group,
       surfaces: this.surfaces,
       props: this.props,
+      propBatches: this.propBatches,
       staticColliders: this.staticColliders,
       propColliders: this.propColliders,
       landmarks: LANDMARKS,
@@ -231,10 +243,17 @@ export class WorldBuilder {
     )
   }
 
-  /** Dynamic prop: a real rigid body, so it scatters when you plough into it. */
+  /**
+   * Dynamic prop: a real rigid body, so it scatters when you plough into it.
+   *
+   * Props are drawn from shared instanced batches rather than one mesh each.
+   * There are a few hundred of them and giving each its own draw call cost more
+   * than the entire rest of the scene put together.
+   */
   private dynamicProp(
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
+    batchKey: string,
     x: number,
     y: number,
     z: number,
@@ -244,13 +263,6 @@ export class WorldBuilder {
     mass: number,
     shape: 'box' | 'cylinder' | 'cone',
   ): void {
-    const mesh = new THREE.Mesh(geometry, material)
-    mesh.scale.set(sx, sy, sz)
-    mesh.position.set(x, y, z)
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    this.group.add(mesh)
-
     const body = this.physics.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic().setTranslation(x, y, z).setLinearDamping(0.25).setAngularDamping(0.5),
     )
@@ -272,14 +284,48 @@ export class WorldBuilder {
       .setContactForceEventThreshold(CRASH_CONTACT_FORCE_GATE * 0.25)
     const collider = this.physics.world.createCollider(desc, body)
 
+    let bucket = this.propBuckets.get(batchKey)
+    if (!bucket) {
+      bucket = { geometry, material, props: [] }
+      this.propBuckets.set(batchKey, bucket)
+    }
+
     const prop: WorldProp = {
       body,
-      mesh,
+      // Filled in by `flushProps`, which is the only place batches exist.
+      batch: null as unknown as THREE.InstancedMesh,
+      index: bucket.props.length,
+      scale: new THREE.Vector3(sx, sy, sz),
       origin: new THREE.Vector3(x, y, z),
       originQuat: new THREE.Quaternion(),
     }
+    bucket.props.push(prop)
     this.props.push(prop)
     this.propColliders.set(collider.handle, prop)
+  }
+
+  /** Turns the collected prop buckets into one InstancedMesh each. */
+  private flushProps(): void {
+    const matrix = new THREE.Matrix4()
+    const identity = new THREE.Quaternion()
+    for (const [key, bucket] of this.propBuckets) {
+      if (bucket.props.length === 0) continue
+      const mesh = new THREE.InstancedMesh(bucket.geometry, bucket.material, bucket.props.length)
+      mesh.name = `props_${key}`
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      mesh.frustumCulled = false
+      for (const prop of bucket.props) {
+        prop.batch = mesh
+        matrix.compose(prop.origin, identity, prop.scale)
+        mesh.setMatrixAt(prop.index, matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+      this.group.add(mesh)
+      this.propBatches.push(mesh)
+    }
+    this.propBuckets.clear()
   }
 
   private flushBatches(): void {
@@ -438,6 +484,7 @@ export class WorldBuilder {
             this.dynamicProp(
               UNIT_CONE,
               this.materials.prop,
+              'cone',
               cx + (rng() - 0.5) * blockHalf * 1.6,
               0.4,
               cz + (rng() - 0.5) * blockHalf * 1.6,
@@ -514,7 +561,7 @@ export class WorldBuilder {
       const b = (Math.floor(this.rng() * 5) - 2) * 88 + (this.rng() < 0.5 ? 9 : -9)
       const x = alongX ? a : b
       const z = alongX ? b : a
-      this.dynamicProp(UNIT_CONE, this.materials.prop, x, 0.4, z, 0.8, 0.8, 0.8, 7, 'cone')
+      this.dynamicProp(UNIT_CONE, this.materials.prop, 'cone', x, 0.4, z, 0.8, 0.8, 0.8, 7, 'cone')
     }
   }
 
@@ -625,7 +672,7 @@ export class WorldBuilder {
         if (level === 0) {
           this.staticBox('container', this.materials.container, x, y, z, 6.2, 3, 13, rng() * 0.2)
         } else {
-          this.dynamicProp(UNIT_BOX, this.materials.container, x, y, z, 6.2, 3, 13, 900, 'box')
+          this.dynamicProp(UNIT_BOX, this.materials.container, 'container', x, y, z, 6.2, 3, 13, 900, 'box')
         }
       }
     }
@@ -635,9 +682,9 @@ export class WorldBuilder {
       const x = 270 + rng() * 300
       const z = -340 + rng() * 320
       if (rng() < 0.5) {
-        this.dynamicProp(UNIT_CYLINDER, this.materials.propBarrel, x, 0.6, z, 1.1, 1.5, 1.1, 30, 'cylinder')
+        this.dynamicProp(UNIT_CYLINDER, this.materials.propBarrel, 'barrel', x, 0.6, z, 1.1, 1.5, 1.1, 30, 'cylinder')
       } else {
-        this.dynamicProp(UNIT_BOX, this.materials.propCrate, x, 0.7, z, 1.4, 1.4, 1.4, 45, 'box')
+        this.dynamicProp(UNIT_BOX, this.materials.propCrate, 'crate', x, 0.7, z, 1.4, 1.4, 1.4, 45, 'box')
       }
     }
   }
@@ -802,15 +849,15 @@ export class WorldBuilder {
       const z = cz + Math.cos(a) * r
       const roll = rng()
       if (roll < 0.35) {
-        this.dynamicProp(UNIT_CYLINDER, this.materials.propBarrel, x, 0.75, z, 1.2, 1.6, 1.2, 26, 'cylinder')
+        this.dynamicProp(UNIT_CYLINDER, this.materials.propBarrel, 'barrel', x, 0.75, z, 1.2, 1.6, 1.2, 26, 'cylinder')
       } else if (roll < 0.7) {
-        this.dynamicProp(UNIT_BOX, this.materials.propCrate, x, 0.8, z, 1.6, 1.6, 1.6, 40, 'box')
+        this.dynamicProp(UNIT_BOX, this.materials.propCrate, 'crate', x, 0.8, z, 1.6, 1.6, 1.6, 40, 'box')
       } else if (roll < 0.9) {
-        this.dynamicProp(UNIT_CONE, this.materials.prop, x, 0.45, z, 0.9, 0.9, 0.9, 6, 'cone')
+        this.dynamicProp(UNIT_CONE, this.materials.prop, 'cone', x, 0.45, z, 0.9, 0.9, 0.9, 6, 'cone')
       } else {
         // Stacked crate towers: hitting the bottom one brings the lot down.
         for (let level = 0; level < 3; level++) {
-          this.dynamicProp(UNIT_BOX, this.materials.propCrate, x, 0.8 + level * 1.65, z, 1.6, 1.6, 1.6, 40, 'box')
+          this.dynamicProp(UNIT_BOX, this.materials.propCrate, 'crate', x, 0.8 + level * 1.65, z, 1.6, 1.6, 1.6, 40, 'box')
         }
       }
     }

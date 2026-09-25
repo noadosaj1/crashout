@@ -95,6 +95,10 @@ export class Engine {
   private readonly disposers: Array<() => void> = []
   private readonly tmpVec = new THREE.Vector3()
   private readonly tmpVec2 = new THREE.Vector3()
+  private readonly propMatrix = new THREE.Matrix4()
+  private readonly propPos = new THREE.Vector3()
+  private readonly propQuat = new THREE.Quaternion()
+  private readonly dirtyBatches = new Set<THREE.InstancedMesh>()
   /** Most recent local crash, for debugging and the probe. */
   private lastCrash: { severity: number; deltaV: number; region: string } | null = null
   /** Guards against double-counting a player-versus-player hit we also felt. */
@@ -519,15 +523,24 @@ export class Engine {
     }
   }
 
-  /** Copies dynamic prop transforms from Rapier into their meshes. */
+  /**
+   * Copies dynamic prop transforms from Rapier into their instanced batches.
+   * Sleeping props are skipped, and a batch is only re-uploaded if something in
+   * it actually moved — most frames that is none of them.
+   */
   private syncProps(): void {
+    this.dirtyBatches.clear()
     for (const prop of this.world.props) {
       if (prop.body.isSleeping()) continue
       const t = prop.body.translation()
       const r = prop.body.rotation()
-      prop.mesh.position.set(t.x, t.y, t.z)
-      prop.mesh.quaternion.set(r.x, r.y, r.z, r.w)
+      this.propPos.set(t.x, t.y, t.z)
+      this.propQuat.set(r.x, r.y, r.z, r.w)
+      this.propMatrix.compose(this.propPos, this.propQuat, prop.scale)
+      prop.batch.setMatrixAt(prop.index, this.propMatrix)
+      this.dirtyBatches.add(prop.batch)
     }
+    for (const batch of this.dirtyBatches) batch.instanceMatrix.needsUpdate = true
   }
 
   private publishHud(): void {
