@@ -257,6 +257,89 @@ console.log('\ngadgets')
   check('the gadget goes on cooldown', result.first === true && result.second === false)
 }
 
+console.log('\ntraffic')
+{
+  await page.evaluate(() => {
+    const e = window.__CRASHOUT__
+    e.vehicle.repair()
+    // A downtown avenue, so the surrounding grid is dense with lanes.
+    e.vehicle.teleport({ x: 8, y: 1.4, z: 120 }, Math.PI)
+  })
+
+  const network = await page.evaluate(() => ({
+    lanes: window.__CRASHOUT__.traffic.network.laneCount,
+    deadEnds: window.__CRASHOUT__.traffic.network.deadEnds,
+  }))
+  check('the lane network is built from the roads', network.lanes > 100, `${network.lanes} lanes`)
+  check('no lane is a dead end', network.deadEnds === 0, `${network.deadEnds} dead ends`)
+
+  const populated = await waitForState(page, (s) => s.traffic >= 20, { timeout: 60_000 })
+  check('traffic fills in around the player', populated.traffic >= 20, `${populated.traffic} cars`)
+
+  // Cars have to actually get somewhere: a stalled lane graph still reports a
+  // healthy population.
+  const travelled = await page.evaluate(async () => {
+    const e = window.__CRASHOUT__
+    const car = e.traffic.cars.find((c) => !c.wrecked)
+    if (!car) return null
+    const from = car.position.clone()
+    const until = e.probe().simTime + 3
+    while (e.probe().simTime < until) await new Promise((r) => setTimeout(r, 100))
+    return { moved: car.position.distanceTo(from), wrecked: car.wrecked }
+  })
+  check('traffic drives along its lanes', travelled !== null && travelled.moved > 8, JSON.stringify(travelled))
+
+  // Ramming one has to hand it to the solver, damage the player and register a
+  // crash — traffic that shrugs off a hit is scenery.
+  await page.evaluate(() => window.__CRASHOUT__.clearLastCrash())
+  const hit = await page.evaluate(async () => {
+    const e = window.__CRASHOUT__
+    const car = e.traffic.cars.find((c) => !c.wrecked)
+    if (!car) return null
+    // Line up behind it and close the gap under our own power.
+    e.vehicle.teleport(
+      {
+        x: car.position.x - Math.sin(car.heading) * 20,
+        y: 1.4,
+        z: car.position.z - Math.cos(car.heading) * 20,
+      },
+      car.heading,
+    )
+    const deadline = e.probe().simTime + 12
+    let releasedAt = null
+    while (e.probe().simTime < deadline) {
+      const p = e.vehicle.position
+      const dx = car.position.x - p.x
+      const dz = car.position.z - p.z
+      const gap = Math.hypot(dx, dz)
+      const scale = 26 / Math.max(1e-3, gap)
+      e.vehicle.body.setLinvel({ x: dx * scale, y: e.vehicle.body.linvel().y, z: dz * scale }, true)
+      if (car.wrecked && releasedAt === null) releasedAt = gap
+      if (e.probe().lastCrash) break
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    const probe = e.probe()
+    return { wrecked: car.wrecked, releasedAt, damage: probe.damage, crash: probe.lastCrash?.severity ?? null }
+  })
+  check('ramming traffic wrecks the car it hits', hit?.wrecked === true, JSON.stringify(hit))
+  // A kinematic body has infinite mass, so a car still being driven when you
+  // reach it is a wall. It has to be handed to the solver before contact.
+  check(
+    'a car about to be hit goes dynamic before contact',
+    (hit?.releasedAt ?? 0) > 4.5,
+    JSON.stringify(hit),
+  )
+  check('ramming traffic damages the player', (hit?.damage ?? 0) > 0.05, JSON.stringify(hit))
+  check('ramming traffic registers a crash', (hit?.crash ?? 0) > 0, JSON.stringify(hit))
+  await page.screenshot({ path: `${SHOTS}/05-traffic.png` })
+
+  await page.evaluate(() => {
+    const e = window.__CRASHOUT__
+    e.vehicle.repair()
+    e.clearLastCrash()
+  })
+}
+
 console.log('\nactivities')
 {
   const started = await page.evaluate(() => {
@@ -303,7 +386,7 @@ console.log('\nactivities')
   }))
   check('reaching the drop-off ends the run', finished.running === false)
   check('the results screen appears', finished.overlay !== null, `${finished.overlay}`)
-  await page.screenshot({ path: `${SHOTS}/05-results.png` })
+  await page.screenshot({ path: `${SHOTS}/06-results.png` })
   await page.keyboard.press('Escape')
   await page.waitForTimeout(600)
 }
@@ -328,7 +411,7 @@ console.log('\ngarage')
   check('buying a car charges the catalogue price', before - after.profile.credits === 6500)
   check('the car lands in the garage', after.vehicles.some((v) => v.specId === 'rustbucket'))
   check('the purchase persists to storage', after.vehicles.length === 2)
-  await page.screenshot({ path: `${SHOTS}/06-garage.png` })
+  await page.screenshot({ path: `${SHOTS}/07-garage.png` })
   await page.keyboard.press('Escape')
   await page.waitForTimeout(500)
 }
@@ -379,7 +462,7 @@ console.log('\nmultiplayer')
   check('the host sees the guest', hostSees.length === 1 && hostSees[0].hasData, JSON.stringify(hostSees))
   check('the guest sees the host', guestSees.length === 1 && guestSees[0].hasData, JSON.stringify(guestSees))
   check('players spawn apart, not on top of each other', Math.abs(hostSees[0].z - guestSees[0].z) > 1)
-  await host.screenshot({ path: `${SHOTS}/07-multiplayer.png` })
+  await host.screenshot({ path: `${SHOTS}/08-multiplayer.png` })
 
   // Line them up and ram.
   await host.evaluate(() => {
@@ -401,7 +484,7 @@ console.log('\nmultiplayer')
   check('the rammer registers the hit', guestState.lastCrash !== null, JSON.stringify(guestState.lastCrash))
   check('the victim registers the hit', hostState.lastCrash !== null, JSON.stringify(hostState.lastCrash))
   check('the victim takes damage', hostState.damage > 0.05, `${hostState.damage}`)
-  await host.screenshot({ path: `${SHOTS}/08-rammed.png` })
+  await host.screenshot({ path: `${SHOTS}/09-rammed.png` })
 
   // Gadgets replicate.
   const hazards = await guest.evaluate(() => {

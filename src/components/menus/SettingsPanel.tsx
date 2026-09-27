@@ -84,6 +84,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           <div className="option">
             <div>
+              <div className="option__name">Traffic</div>
+              <div className="option__desc">Cars going about their day, for you to get in the way of.</div>
+            </div>
+            <button className="btn btn--sm" onClick={() => patch({ traffic: !settings.traffic })}>
+              {settings.traffic ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="option">
+            <div>
               <div className="option__name">Show performance</div>
               <div className="option__desc">Frame rate and live particle count</div>
             </div>

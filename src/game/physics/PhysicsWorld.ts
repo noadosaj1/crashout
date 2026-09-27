@@ -37,7 +37,7 @@ export class PhysicsWorld {
   private accumulator = 0
   private readonly stepCallbacks: Array<(dt: number) => void> = []
   private readonly postStepCallbacks: Array<(dt: number) => void> = []
-  private contactHandler: ContactForceHandler | null = null
+  private readonly contactHandlers: ContactForceHandler[] = []
   private intersectionHandler: IntersectionHandler | null = null
   /** Fraction of the way into the next physics step, for render interpolation. */
   alpha = 0
@@ -77,8 +77,16 @@ export class PhysicsWorld {
     }
   }
 
-  setContactHandler(handler: ContactForceHandler | null): void {
-    this.contactHandler = handler
+  /**
+   * Contact-force events go to every registered handler. More than one system
+   * cares about impacts — crashes, and traffic deciding it has been hit.
+   */
+  addContactHandler(handler: ContactForceHandler): () => void {
+    this.contactHandlers.push(handler)
+    return () => {
+      const i = this.contactHandlers.indexOf(handler)
+      if (i >= 0) this.contactHandlers.splice(i, 1)
+    }
   }
 
   setIntersectionHandler(handler: IntersectionHandler | null): void {
@@ -103,11 +111,13 @@ export class PhysicsWorld {
   }
 
   private drainEvents(): void {
-    const contact = this.contactHandler
-    if (contact) {
+    if (this.contactHandlers.length > 0) {
       this.eventQueue.drainContactForceEvents((event) => {
         const dir = event.maxForceDirection()
-        contact(event.collider1(), event.collider2(), event.totalForceMagnitude(), dir.x, dir.y, dir.z)
+        const a = event.collider1()
+        const b = event.collider2()
+        const magnitude = event.totalForceMagnitude()
+        for (const handler of this.contactHandlers) handler(a, b, magnitude, dir.x, dir.y, dir.z)
       })
     } else {
       this.eventQueue.drainContactForceEvents(() => {})
@@ -124,6 +134,7 @@ export class PhysicsWorld {
   dispose(): void {
     this.stepCallbacks.length = 0
     this.postStepCallbacks.length = 0
+    this.contactHandlers.length = 0
     this.eventQueue.free()
     this.world.free()
   }

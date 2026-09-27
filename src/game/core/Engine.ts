@@ -18,6 +18,7 @@ import { GadgetSystem } from '@/game/gadgets/GadgetSystem'
 import { ActivitySystem, type ActivityResult, type ActivityRunState } from '@/game/missions/ActivitySystem'
 import { NetworkClient, type RemotePlayerInfo } from '@/game/multiplayer/NetworkClient'
 import { createSky } from '@/game/world/Sky'
+import { TrafficSystem } from '@/game/traffic/TrafficSystem'
 import { PostProcessing } from './PostProcessing'
 import { regionFromLocalDirection } from '@/game/vehicles/damage'
 import { gameEvents } from './GameEvents'
@@ -73,6 +74,7 @@ export class Engine {
   readonly gadgets = new GadgetSystem()
   readonly activities = new ActivitySystem()
   readonly network: NetworkClient
+  readonly traffic: TrafficSystem
   readonly post: PostProcessing
 
   readonly world: BuiltWorld
@@ -97,6 +99,7 @@ export class Engine {
   private readonly disposers: Array<() => void> = []
   private readonly tmpVec = new THREE.Vector3()
   private readonly tmpVec2 = new THREE.Vector3()
+  private readonly tmpVec3 = new THREE.Vector3()
   private readonly propMatrix = new THREE.Matrix4()
   private readonly propPos = new THREE.Vector3()
   private readonly propQuat = new THREE.Quaternion()
@@ -187,9 +190,12 @@ export class Engine {
     this.scene.add(this.gadgets.object)
     this.scene.add(this.activities.object)
 
+    this.traffic = new TrafficSystem(this.physics)
+    this.scene.add(this.traffic.object)
+
     this.network = new NetworkClient(this.physics, this.scene)
 
-    this.physics.setContactHandler(this.crash.onContactForce)
+    this.disposers.push(this.physics.addContactHandler(this.crash.onContactForce))
     this.crash.setRemoteColliders(this.network.remotePlayerByCollider)
     this.crash.attach({
       particles: this.particles,
@@ -442,6 +448,15 @@ export class Engine {
       this.gadgets.update(dt, affected)
     }
 
+    if (!this.paused) {
+      this.camera.camera.getWorldDirection(this.tmpVec2)
+      if (vehicle) {
+        const v = vehicle.body.linvel()
+        this.tmpVec3.set(v.x, v.y, v.z)
+      }
+      this.traffic.update(dt, vehicle?.position ?? null, this.tmpVec2, vehicle ? this.tmpVec3 : null)
+    }
+
     this.particles.update(dt)
     this.syncProps()
     this.network.update(dt, vehicle, this.camera.camera.position)
@@ -646,6 +661,8 @@ export class Engine {
       compression: v ? v.wheels.map((w) => +w.compression.toFixed(2)) : [],
       damage: v ? +v.damageLevel.toFixed(3) : 0,
       particles: this.particles.count,
+      traffic: this.traffic.count,
+      trafficWrecks: this.traffic.wreckCount,
       rigidBodies: this.physics.world.bodies.len(),
       colliders: this.physics.world.colliders.len(),
       players: this.network.playerCount,
@@ -669,6 +686,7 @@ export class Engine {
     this.particles.dispose()
     this.skidMarks.dispose()
     this.audio.dispose()
+    this.traffic.dispose()
     this.post.dispose()
     this.localVehicle?.dispose(this.scene)
     this.world.dispose()

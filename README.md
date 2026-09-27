@@ -60,6 +60,7 @@ src/
     audio/       Procedural WebAudio (no sample files)
     gadgets/     Sabotage hazards
     missions/    Deliveries, races, time trials, crash challenges
+    traffic/     Lane graph built from the roads, AI cars that drive it
     multiplayer/ Remote vehicles, interpolation, replication
   components/    HUD, garage, menus, session panel  (React)
   lib/
@@ -134,6 +135,37 @@ measure is mass-independent, so one threshold works for a 980 kg hatchback and a
 
 The damaged panel is derived from the direction the car was shoved, which is
 robust regardless of which collider the solver put in slot 1.
+
+### AI traffic
+
+The roads in `src/config/world.ts` are long strips that cross each other
+mid-span, so they are not a graph. `TrafficNetwork` splits every road at each
+crossing, offsets the two directions to opposite sides of the centreline and
+links each lane to the lanes that leave its far end. U-turns are only offered
+where a lane has no other exit, which is what keeps cars from bouncing back and
+forth along a spur.
+
+Cars follow their lane with pure pursuit — aim at a point a little way ahead,
+turn towards it at a bounded rate — and brake for whatever is in front of them,
+the player included. They drive as kinematic bodies: cheap, and they cannot be
+shoved off their lane by a passing wing mirror.
+
+A kinematic body has infinite mass, though, so hitting one is hitting a wall. A
+car about to be hit is handed to the solver a moment early — closing speed,
+time to closest approach and predicted miss distance decide — so the impact is
+one car against another, and the car that was hit tumbles because the solver
+made it, not because an impulse was faked. Anything hit hard enough goes
+dynamic the same way and stays a wreck for `TRAFFIC_WRECK_LIFETIME`.
+
+Traffic is local to each client and is not replicated: two players in a session
+see their own cars, and a wreck one player causes does not appear on the other's
+screen. Replicating it would mean an authoritative owner for every car, which is
+the same problem the networking layer defers until there is a server.
+
+Density, the spawn ring and the silhouettes are all in `src/config/traffic.ts`.
+Cars are kept from appearing where you would see it happen: a spawn inside the
+forward cone needs a building between it and the player, or a long distance.
+Traffic can be turned off entirely in Settings.
 
 ---
 

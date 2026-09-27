@@ -148,6 +148,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
     engine.camera.settings.shakeScale = settings.cameraShake
     engine.camera.settings.distance = settings.cameraDistance
     engine.post.setEnabled(settings.postProcessing)
+    engine.traffic.setEnabled(settings.traffic)
   }, [settings, overlay, ready])
 
   // --- Overlay ↔ pause -----------------------------------------------------

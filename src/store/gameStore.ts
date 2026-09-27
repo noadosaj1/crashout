@@ -38,6 +38,8 @@ export interface Settings {
   cameraDistance: number
   /** Bloom and multisampling. The first thing to turn off on a slow machine. */
   postProcessing: boolean
+  /** AI traffic. Off gives an empty city, and a few frames back. */
+  traffic: boolean
 }
 
 interface GameState {
@@ -76,6 +78,7 @@ function loadSettings(): Settings {
     showFps: false,
     cameraDistance: 7.4,
     postProcessing: true,
+    traffic: true,
   }
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
