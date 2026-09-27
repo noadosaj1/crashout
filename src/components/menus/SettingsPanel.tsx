@@ -71,6 +71,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           <div className="option">
             <div>
+              <div className="option__name">Visual effects</div>
+              <div className="option__desc">Bloom and edge smoothing. Turn off if the frame rate drops.</div>
+            </div>
+            <button
+              className="btn btn--sm"
+              onClick={() => patch({ postProcessing: !settings.postProcessing })}
+            >
+              {settings.postProcessing ? 'On' : 'Off'}
+            </button>
+          </div>
+
+          <div className="option">
+            <div>
               <div className="option__name">Show performance</div>
               <div className="option__desc">Frame rate and live particle count</div>
             </div>

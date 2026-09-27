@@ -36,6 +36,8 @@ export interface Settings {
   cameraShake: number
   showFps: boolean
   cameraDistance: number
+  /** Bloom and multisampling. The first thing to turn off on a slow machine. */
+  postProcessing: boolean
 }
 
 interface GameState {
@@ -67,7 +69,14 @@ interface GameState {
 const SETTINGS_KEY = 'crashout.settings.v1'
 
 function loadSettings(): Settings {
-  const fallback: Settings = { volume: 0.6, muted: false, cameraShake: 1, showFps: false, cameraDistance: 7.4 }
+  const fallback: Settings = {
+    volume: 0.6,
+    muted: false,
+    cameraShake: 1,
+    showFps: false,
+    cameraDistance: 7.4,
+    postProcessing: true,
+  }
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<Settings>) } : fallback

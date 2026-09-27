@@ -65,7 +65,19 @@ export class SupabaseRealtimeTransport implements NetworkTransport {
     })
 
     await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Realtime connection timed out')), 12_000)
+      const fail = (detail: string): void => {
+        this.setStatus('error')
+        // The raw status codes are meaningless to a player, and this is the one
+        // error they are most likely to see: it fires when Realtime is disabled
+        // on the project, or when a network blocks websockets.
+        reject(
+          new Error(
+            `Could not reach the multiplayer server (${detail}). Check that Realtime ` +
+              'is enabled for your Supabase project and that your network allows websockets.',
+          ),
+        )
+      }
+      const timeout = setTimeout(() => fail('timed out'), 12_000)
       channel.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           clearTimeout(timeout)
@@ -74,8 +86,7 @@ export class SupabaseRealtimeTransport implements NetworkTransport {
           resolve()
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           clearTimeout(timeout)
-          this.setStatus('error')
-          reject(new Error(`Realtime channel failed: ${status}`))
+          fail(status === 'TIMED_OUT' ? 'timed out' : 'connection refused')
         }
       })
     })

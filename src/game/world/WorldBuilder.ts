@@ -6,6 +6,14 @@ import type { PhysicsWorld } from '@/game/physics/PhysicsWorld'
 import { createWorldMaterials, disposeMaterials, type WorldMaterials } from './materials'
 import { SURFACE, SurfaceMap } from './SurfaceMap'
 
+/** Lateral unit vector for a road heading, used to lay stripes across it. */
+function nxOf(rot: number): number {
+  return Math.cos(rot)
+}
+function nzOf(rot: number): number {
+  return -Math.sin(rot)
+}
+
 /** Seeded RNG so the city is identical for every player in a session. */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
@@ -447,6 +455,46 @@ export class WorldBuilder {
         false,
         false,
       )
+    }
+
+    // Kerbs. A flat ribbon of asphalt on a flat ground plane has no edge to
+    // read against; a raised lip on each side gives the road a silhouette.
+    if (road.kind !== 'highway') {
+      const nx = dz / length
+      const nz = -dx / length
+      const offset = road.width / 2 + 0.22
+      for (const side of [-1, 1]) {
+        this.addInstance(
+          'curb',
+          UNIT_BOX,
+          this.materials.curb,
+          new THREE.Vector3(cx + nx * offset * side, 0.11, cz + nz * offset * side),
+          new THREE.Vector3(0.44, 0.2, length),
+          q,
+          false,
+          true,
+        )
+      }
+    }
+
+    if (road.kind === 'avenue') {
+      // Crosswalk stripes at each end, where the avenues meet cross streets.
+      for (const end of [0.5, -0.5]) {
+        const px = cx + dx * end * 0.92
+        const pz = cz + dz * end * 0.92
+        for (let i = -3; i <= 3; i++) {
+          this.addInstance(
+            'crosswalk',
+            UNIT_BOX,
+            this.materials.line,
+            new THREE.Vector3(px + nxOf(rot) * i * 2.2, y + 0.03, pz + nzOf(rot) * i * 2.2),
+            new THREE.Vector3(1.1, 0.02, 4.4),
+            q,
+            false,
+            false,
+          )
+        }
+      }
     }
 
     if (road.kind === 'highway') {

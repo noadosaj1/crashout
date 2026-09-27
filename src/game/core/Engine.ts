@@ -18,6 +18,7 @@ import { GadgetSystem } from '@/game/gadgets/GadgetSystem'
 import { ActivitySystem, type ActivityResult, type ActivityRunState } from '@/game/missions/ActivitySystem'
 import { NetworkClient, type RemotePlayerInfo } from '@/game/multiplayer/NetworkClient'
 import { createSky } from '@/game/world/Sky'
+import { PostProcessing } from './PostProcessing'
 import { regionFromLocalDirection } from '@/game/vehicles/damage'
 import { gameEvents } from './GameEvents'
 
@@ -72,6 +73,7 @@ export class Engine {
   readonly gadgets = new GadgetSystem()
   readonly activities = new ActivitySystem()
   readonly network: NetworkClient
+  readonly post: PostProcessing
 
   readonly world: BuiltWorld
 
@@ -130,6 +132,7 @@ export class Engine {
 
     this.physics = new PhysicsWorld()
     this.camera = new ChaseCamera(this.physics, (canvas.clientWidth || 16) / (canvas.clientHeight || 9))
+    this.post = new PostProcessing(this.renderer, this.scene, this.camera.camera)
 
     // --- Lighting & sky ----------------------------------------------------
     this.scene.background = new THREE.Color(0x9cc0de)
@@ -372,6 +375,7 @@ export class Engine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.renderer.setSize(width, height, false)
     this.camera.setAspect(width / Math.max(1, height))
+    this.post.setSize(width, height)
   }
 
   private readonly frame = (now: number): void => {
@@ -442,7 +446,7 @@ export class Engine {
     this.syncProps()
     this.network.update(dt, vehicle, this.camera.camera.position)
 
-    this.renderer.render(this.scene, this.camera.camera)
+    this.post.render()
 
     this.hudAccumulator += dt
     if (this.hudAccumulator >= HUD_INTERVAL) {
@@ -665,6 +669,7 @@ export class Engine {
     this.particles.dispose()
     this.skidMarks.dispose()
     this.audio.dispose()
+    this.post.dispose()
     this.localVehicle?.dispose(this.scene)
     this.world.dispose()
     this.physics.dispose()

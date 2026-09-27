@@ -7,7 +7,7 @@ export function createWorldMaterials() {
     asphalt: new THREE.MeshStandardMaterial({ color: 0x33353b, roughness: 0.88, metalness: 0.02 }),
     highway: new THREE.MeshStandardMaterial({ color: 0x3a3d44, roughness: 0.82, metalness: 0.04 }),
     line: new THREE.MeshBasicMaterial({ color: 0xd8d2b8 }),
-    curb: new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.8 }),
+    curb: new THREE.MeshStandardMaterial({ color: 0x8b9298, roughness: 0.86 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0x74797e, roughness: 0.94 }),
     buildingA: new THREE.MeshStandardMaterial({ color: 0x6f7885, roughness: 0.72, metalness: 0.15 }),
     buildingB: new THREE.MeshStandardMaterial({ color: 0x58606d, roughness: 0.65, metalness: 0.25 }),

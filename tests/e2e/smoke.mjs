@@ -34,6 +34,21 @@ if (process.env.CRASHOUT_E2E_CHROME) launchOptions.executablePath = process.env.
 
 const browser = await chromium.launch(launchOptions)
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 } })
+
+// Post-processing off for the whole run. This suite asserts on simulation state,
+// and a software renderer doing bloom into an HDR multisampled target — twice
+// over, once per page, during the multiplayer section — is slow enough to make
+// the results about the renderer rather than the game. Seeded before any page
+// script runs so the store picks it up at module load.
+await context.addInitScript(() => {
+  try {
+    const key = 'crashout.settings.v1'
+    const existing = JSON.parse(localStorage.getItem(key) ?? '{}')
+    localStorage.setItem(key, JSON.stringify({ ...existing, postProcessing: false }))
+  } catch {
+    // Storage blocked; the default is only a performance concern here.
+  }
+})
 const pageErrors = []
 
 async function boot(label) {
@@ -250,13 +265,22 @@ console.log('\nactivities')
     return e.startActivity('delivery_docks')
   })
   check('an activity starts', started === true)
-  await settle(page, 1200)
-  const running = await page.evaluate(() => {
-    const a = window.__CRASHOUT__.activities.current
-    return a && { id: a.activityId, remaining: a.timeRemaining, distance: a.distance }
-  })
+
+  // Poll rather than sleep: headless Chromium throttles the frame loop in
+  // bursts, so a fixed wait sometimes contains no simulation at all.
+  const readRun = () =>
+    page.evaluate(() => {
+      const a = window.__CRASHOUT__.activities.current
+      return a && { id: a.activityId, remaining: a.timeRemaining, distance: a.distance }
+    })
+  let running = await readRun()
+  const runDeadline = Date.now() + 20_000
+  while (Date.now() < runDeadline && running && running.remaining >= 95) {
+    await page.waitForTimeout(250)
+    running = await readRun()
+  }
   check('the timer counts down', running && running.remaining < 95, JSON.stringify(running))
-  check('the objective is a real distance away', running && running.distance > 100)
+  check('the objective is a real distance away', running && running.distance > 100, JSON.stringify(running))
 
   // Finish it by driving to the drop-off.
   await page.evaluate(() => {

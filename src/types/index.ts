@@ -52,6 +52,10 @@ export interface VehicleSpec {
     noseSlope: number
     baseColor: number
     accent: number
+    /** Rear wing. Sporty cars get one; a pickup does not. */
+    spoiler?: boolean
+    /** Extra ride height for the arches, so off-roaders look like off-roaders. */
+    archFlare?: number
   }
   audioProfile: { idleHz: number; redlineHz: number; timbre: 'growl' | 'whine' | 'rasp' }
   boost?: { force: number; capacity: number; regen: number }

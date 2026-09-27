@@ -147,6 +147,7 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
     engine.audio.setMuted(settings.muted || overlay !== null)
     engine.camera.settings.shakeScale = settings.cameraShake
     engine.camera.settings.distance = settings.cameraDistance
+    engine.post.setEnabled(settings.postProcessing)
   }, [settings, overlay, ready])
 
   // --- Overlay ↔ pause -----------------------------------------------------
