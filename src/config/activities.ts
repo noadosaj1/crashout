@@ -79,6 +79,72 @@ export const ACTIVITIES: Record<string, ActivitySpec> = {
     ],
   },
 
+  delivery_arena: {
+    id: 'delivery_arena',
+    kind: 'delivery',
+    name: 'Parts Run — Arena',
+    description: 'Spares for the demolition crew, right across town. The west arterial is quickest.',
+    baseReward: 3_000,
+    timeLimit: 100,
+    waypoints: [[-420, 1, -420]],
+  },
+
+  race_industrial: {
+    id: 'race_industrial',
+    kind: 'race',
+    name: 'Yard Circuit',
+    description: 'A tight lap of the industrial yards. Four corners, no run-off, plenty of scenery.',
+    baseReward: 5_500,
+    timeLimit: 170,
+    waypoints: [
+      [540, 1, -60],
+      [540, 1, -260],
+      [300, 1, -260],
+      [300, 1, -60],
+      [420, 1, -60],
+    ],
+  },
+  race_suburbs: {
+    id: 'race_suburbs',
+    kind: 'race',
+    name: 'Overlook Dash',
+    description: 'Through the suburb grid and back. Short straights, so it is won on the corners.',
+    baseReward: 4_800,
+    timeLimit: 165,
+    waypoints: [
+      [-500, 1, -60],
+      [-340, 1, 180],
+      [-500, 1, 300],
+      [-340, 1, -60],
+      [-420, 1, 120],
+    ],
+  },
+
+  trial_highway: {
+    id: 'trial_highway',
+    kind: 'time_trial',
+    name: 'Southern Run',
+    description: 'The long way round the southern highway. Bring something with a top end.',
+    baseReward: 4_200,
+    timeLimit: 95,
+    waypoints: [
+      [-300, 1, -600],
+      [300, 1, -600],
+      [640, 1, -600],
+      [640, 1, -240],
+    ],
+  },
+
+  crash_docks: {
+    id: 'crash_docks',
+    kind: 'crash_challenge',
+    name: 'Smokestack Smash',
+    description: 'Seventy-five seconds among the yards. Traffic counts. So do the walls.',
+    baseReward: 1_400,
+    timeLimit: 75,
+    waypoints: [[420, 1, -200]],
+  },
+
   crash_arena: {
     id: 'crash_arena',
     kind: 'crash_challenge',

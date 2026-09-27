@@ -18,7 +18,7 @@ import { GadgetSystem } from '@/game/gadgets/GadgetSystem'
 import { ActivitySystem, type ActivityResult, type ActivityRunState } from '@/game/missions/ActivitySystem'
 import { NetworkClient, type RemotePlayerInfo } from '@/game/multiplayer/NetworkClient'
 import { createSky } from '@/game/world/Sky'
-import { TrafficSystem } from '@/game/traffic/TrafficSystem'
+import { TrafficSystem, type TrafficContext } from '@/game/traffic/TrafficSystem'
 import { PostProcessing } from './PostProcessing'
 import { regionFromLocalDirection } from '@/game/vehicles/damage'
 import { gameEvents } from './GameEvents'
@@ -100,6 +100,13 @@ export class Engine {
   private readonly tmpVec = new THREE.Vector3()
   private readonly tmpVec2 = new THREE.Vector3()
   private readonly tmpVec3 = new THREE.Vector3()
+  /** Reused so the frame loop allocates nothing. */
+  private readonly trafficContext: TrafficContext = {
+    playerPosition: null,
+    viewDirection: null,
+    playerVelocity: null,
+    hazards: null,
+  }
   private readonly propMatrix = new THREE.Matrix4()
   private readonly propPos = new THREE.Vector3()
   private readonly propQuat = new THREE.Quaternion()
@@ -192,6 +199,7 @@ export class Engine {
 
     this.traffic = new TrafficSystem(this.physics)
     this.scene.add(this.traffic.object)
+    this.disposers.push(this.physics.onStep((step) => this.traffic.step(step, this.trafficContext)))
 
     this.network = new NetworkClient(this.physics, this.scene)
 
@@ -411,6 +419,17 @@ export class Engine {
         if (input.resetCamera) this.camera.reset()
       }
 
+      // Filled before the physics runs, because the traffic ticks inside it.
+      this.camera.camera.getWorldDirection(this.tmpVec2)
+      if (vehicle) {
+        const v = vehicle.body.linvel()
+        this.tmpVec3.set(v.x, v.y, v.z)
+      }
+      this.trafficContext.playerPosition = vehicle?.position ?? null
+      this.trafficContext.viewDirection = this.tmpVec2
+      this.trafficContext.playerVelocity = vehicle ? this.tmpVec3 : null
+      this.trafficContext.hazards = this.gadgets.activeHazards
+
       this.physics.advance(dt)
       this.crash.resolve(dt)
 
@@ -448,14 +467,7 @@ export class Engine {
       this.gadgets.update(dt, affected)
     }
 
-    if (!this.paused) {
-      this.camera.camera.getWorldDirection(this.tmpVec2)
-      if (vehicle) {
-        const v = vehicle.body.linvel()
-        this.tmpVec3.set(v.x, v.y, v.z)
-      }
-      this.traffic.update(dt, vehicle?.position ?? null, this.tmpVec2, vehicle ? this.tmpVec3 : null)
-    }
+    this.traffic.render()
 
     this.particles.update(dt)
     this.syncProps()

@@ -13,9 +13,21 @@ import {
   TRAFFIC_WRECK_LIFETIME,
   type TrafficSilhouette,
 } from '@/config/traffic'
+import { GADGETS } from '@/config/gadgets'
 import type { PhysicsWorld } from '@/game/physics/PhysicsWorld'
 import { enableInstanceColors } from '@/game/effects/instancedColor'
+import type { ActiveHazard } from '@/game/gadgets/GadgetSystem'
 import { TrafficNetwork, type Lane } from './TrafficNetwork'
+
+/** Everything the traffic needs to know about the rest of the frame. */
+export interface TrafficContext {
+  playerPosition: THREE.Vector3 | null
+  /** Where the camera looks, so cars do not appear on screen. */
+  viewDirection: THREE.Vector3 | null
+  playerVelocity: THREE.Vector3 | null
+  /** Live gadget hazards, or null when nothing is dropped. */
+  hazards: ReadonlyMap<string, ActiveHazard> | null
+}
 
 interface TrafficCar {
   silhouette: number
@@ -32,6 +44,8 @@ interface TrafficCar {
   heading: number
   wrecked: boolean
   wreckedAt: number
+  /** Driving badly until this time: blinded by smoke, or sliding on oil. */
+  crawlUntil: number
   position: THREE.Vector3
 }
 
@@ -50,6 +64,11 @@ const BRACE_MISS = 3
 const BRACE_CLOSING_SPEED = 4
 /** Only cars this close are even considered for an early release. */
 const BRACE_DISTANCE = 30
+/** How long a car keeps driving badly after a hazard, and how slowly. */
+const CRAWL_TIME = 2.5
+const CRAWL_SPEED = 3
+/** How far off line an oil slick throws a car, in radians. */
+const OIL_SWERVE = 0.3
 
 /** Horizontal half-angle counted as "on screen", with a margin on the camera. */
 const VIEW_COS = Math.cos(THREE.MathUtils.degToRad(55))
@@ -205,6 +224,51 @@ export class TrafficSystem {
     return missX * missX + missZ * missZ < BRACE_MISS * BRACE_MISS
   }
 
+  /**
+   * Whatever the player dropped on the road applies to traffic too — which is
+   * most of what makes a gadget worth carrying when nobody else is online.
+   * Returns true when the car has been taken out of its lane.
+   */
+  private hazardHit(car: TrafficCar, hazards: ReadonlyMap<string, ActiveHazard>): boolean {
+    for (const hazard of hazards.values()) {
+      const radius = GADGETS[hazard.gadgetId].radius
+      const dx = car.position.x - hazard.position.x
+      const dz = car.position.z - hazard.position.z
+      if (dx * dx + dz * dz > radius * radius) continue
+
+      // Smoke and oil cost a driver control, not the car. Taking them out of
+      // their lane instead leaves a wreck where they stood, and one slick on a
+      // downtown avenue silts the whole street up within a minute.
+      if (hazard.gadgetId === 'smoke_screen') {
+        car.crawlUntil = this.time + CRAWL_TIME
+        continue
+      }
+      if (hazard.gadgetId === 'oil_slick') {
+        car.crawlUntil = this.time + CRAWL_TIME
+        car.heading += (this.random() - 0.5) * OIL_SWERVE
+        continue
+      }
+
+      const silhouette = TRAFFIC_SILHOUETTES[car.silhouette]
+      this.goDynamic(car)
+      if (hazard.gadgetId === 'bounce_pad') {
+        car.body.applyImpulse({ x: 0, y: silhouette.mass * 12, z: 0 }, true)
+      } else if (hazard.gadgetId === 'thumper') {
+        // Thrown away from the charge, the same as a player's car.
+        const length = Math.max(0.001, Math.hypot(dx, dz))
+        const impulse = silhouette.mass * 9
+        car.body.applyImpulse(
+          { x: (dx / length) * impulse, y: impulse * 0.45, z: (dz / length) * impulse },
+          true,
+        )
+      }
+      const spin = silhouette.mass * (hazard.gadgetId === 'spike_strip' ? 9 : 5)
+      car.body.applyTorqueImpulse({ x: 0, y: (this.random() - 0.5) * spin, z: 0 }, true)
+      return true
+    }
+    return false
+  }
+
   private wreck(car: TrafficCar, dx: number, dy: number, dz: number, magnitude: number): void {
     if (car.wrecked) return
     this.goDynamic(car)
@@ -338,6 +402,7 @@ export class TrafficSystem {
       heading: Math.atan2(lane.direction.x, lane.direction.z),
       wrecked: false,
       wreckedAt: 0,
+      crawlUntil: 0,
       position,
     }
     this.cars.push(car)
@@ -356,14 +421,14 @@ export class TrafficSystem {
     for (const mesh of this.batches) mesh.count = 0
   }
 
-  /** Called once per rendered frame. */
-  update(
-    dt: number,
-    playerPosition: THREE.Vector3 | null,
-    viewDirection: THREE.Vector3 | null = null,
-    playerVelocity: THREE.Vector3 | null = null,
-  ): void {
+  /**
+   * One simulation tick. Driven by the physics clock, not by rendered frames:
+   * the cars share a world with the player's car, and on a slow machine a
+   * frame-driven traffic system crawls while the physics keeps real time.
+   */
+  step(dt: number, context: TrafficContext): void {
     this.time += dt
+    const { playerPosition, viewDirection, playerVelocity, hazards } = context
     if (!this.enabled || !playerPosition) return
 
     for (let i = this.cars.length - 1; i >= 0; i--) {
@@ -382,6 +447,7 @@ export class TrafficSystem {
         this.goDynamic(car)
         continue
       }
+      if (hazards && this.hazardHit(car, hazards)) continue
       this.drive(car, dt, playerPosition)
     }
 
@@ -389,8 +455,6 @@ export class TrafficSystem {
     while (this.cars.length < TRAFFIC_DENSITY && attempts++ < 6) {
       this.spawn(playerPosition, viewDirection)
     }
-
-    this.render()
   }
 
   private drive(car: TrafficCar, dt: number, playerPosition: THREE.Vector3): void {
@@ -430,6 +494,7 @@ export class TrafficSystem {
     car.heading += THREE.MathUtils.clamp(error, -maxTurn, maxTurn)
 
     let targetSpeed = car.lane.speedLimit * silhouette.speed * car.mood
+    if (this.time < car.crawlUntil) targetSpeed = Math.min(targetSpeed, CRAWL_SPEED)
     // Ease off through corners.
     targetSpeed *= THREE.MathUtils.clamp(1 - Math.abs(error) * 0.9, 0.3, 1)
     targetSpeed = Math.min(targetSpeed, this.gapSpeed(car, targetSpeed, playerPosition))
@@ -484,7 +549,8 @@ export class TrafficSystem {
   }
 
   /** Writes every live car into its silhouette's instanced batch. */
-  private render(): void {
+  /** Pushes the current positions into the instanced batches. Once per frame. */
+  render(): void {
     const used = this.batches.map(() => 0)
     for (const car of this.cars) {
       const index = used[car.silhouette]++

@@ -843,6 +843,15 @@ export class WorldBuilder {
     // Dust Mesa: a flat-topped plateau you can launch off.
     this.staticBox('mesa', this.materials.dirt, 40, 9, 520, 60, 18, 60)
     this.ramp(40, 476, 18, 34, 17.5, 0)
+
+    // Stunt park, east of the mesa. Nothing here has a face you can hit head-on:
+    // a landing ramp's high edge is a wall to anyone who comes up short, so the
+    // distance jump lands on open dirt and the hump is mirrored.
+    this.ramp(170, 430, 20, 30, 9, Math.PI / 2)
+    this.ramp(120, 470, 24, 22, 4, Math.PI / 2, true)
+    // A table to get on top of: the ramp crests exactly at its leading edge.
+    this.staticBox('stunt_table', this.materials.dirt, 190, 3, 520, 46, 6, 34)
+    this.ramp(152, 520, 20, 30, 6, Math.PI / 2)
   }
 
   // ------------------------------------------------------------------ arena

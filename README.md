@@ -148,7 +148,9 @@ forth along a spur.
 Cars follow their lane with pure pursuit — aim at a point a little way ahead,
 turn towards it at a bounded rate — and brake for whatever is in front of them,
 the player included. They drive as kinematic bodies: cheap, and they cannot be
-shoved off their lane by a passing wing mirror.
+shoved off their lane by a passing wing mirror. Like the vehicle forces, they
+tick on the fixed physics clock rather than on rendered frames, so on a slow
+machine the traffic and the player's car still share one notion of time.
 
 A kinematic body has infinite mass, though, so hitting one is hitting a wall. A
 car about to be hit is handed to the solver a moment early — closing speed,
@@ -265,11 +267,19 @@ the SPA rewrite and asset caching.
 
 ## Content is data
 
-Adding a car means one entry in `src/config/vehicles.ts` (plus a row in
+Twelve cars, twelve activities, five gadgets and five districts, all of it
+config. Adding a car means one entry in `src/config/vehicles.ts` (plus a row in
 `vehicle_catalog` if you are using Supabase). Adding a gadget means one entry in
-`src/config/gadgets.ts` plus a visual and an effect case in `GadgetSystem`.
-Adding an activity means one entry in `src/config/activities.ts`. Roads, zones
-and landmarks live in `src/config/world.ts`.
+`src/config/gadgets.ts` plus a visual and an effect case in `GadgetSystem`, and
+a case in `TrafficSystem.hazardHit` if traffic should care about it. Adding an
+activity means one entry in `src/config/activities.ts` (plus a row in
+`activity_catalog`, which is what caps its payout). Roads, zones and landmarks
+live in `src/config/world.ts`.
+
+Gadgets act on traffic as well as on other players, which is what makes them
+worth carrying with nobody else online: a spike strip across a junction leaves
+cars sideways in it, smoke drops everyone who drives in to a crawl, and a
+thumper charge throws whatever passes it off the road.
 
 Vehicles are fictional. No real manufacturer's marks, models or branding are
 used, and the vehicle data layer is deliberately shaped so licensed cars could be

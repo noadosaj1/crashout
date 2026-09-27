@@ -262,6 +262,9 @@ console.log('\ntraffic')
   await page.evaluate(() => {
     const e = window.__CRASHOUT__
     e.vehicle.repair()
+    // Clear the hazards the gadget section left lying about: traffic reacts to
+    // them, and this section is about traffic on an ordinary street.
+    e.gadgets.clear()
     // A downtown avenue, so the surrounding grid is dense with lanes.
     e.vehicle.teleport({ x: 8, y: 1.4, z: 120 }, Math.PI)
   })
@@ -276,18 +279,47 @@ console.log('\ntraffic')
   const populated = await waitForState(page, (s) => s.traffic >= 20, { timeout: 60_000 })
   check('traffic fills in around the player', populated.traffic >= 20, `${populated.traffic} cars`)
 
+  // The player has been teleported across the map several times by now, so the
+  // cars from the last stop are still being despawned. Everything below tracks
+  // individual cars, and a despawned car never moves again.
+  const settledPopulation = await page.evaluate(async () => {
+    const e = window.__CRASHOUT__
+    const deadline = e.probe().simTime + 20
+    const near = () =>
+      e.traffic.cars.filter((c) => c.position.distanceTo(e.vehicle.position) < 300).length
+    while (e.probe().simTime < deadline && near() < 15) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    return { near: near(), total: e.traffic.cars.length }
+  })
+  check(
+    'the population follows the player across the map',
+    settledPopulation.near >= 15,
+    JSON.stringify(settledPopulation),
+  )
+
   // Cars have to actually get somewhere: a stalled lane graph still reports a
-  // healthy population.
+  // healthy population. Measured across the whole population, because any one
+  // car may legitimately be sitting in a queue.
   const travelled = await page.evaluate(async () => {
     const e = window.__CRASHOUT__
-    const car = e.traffic.cars.find((c) => !c.wrecked)
-    if (!car) return null
-    const from = car.position.clone()
+    const tracked = e.traffic.cars
+      .filter((c) => !c.wrecked && c.position.distanceTo(e.vehicle.position) < 300)
+      .map((c) => ({ car: c, from: c.position.clone() }))
+    if (tracked.length === 0) return null
     const until = e.probe().simTime + 3
     while (e.probe().simTime < until) await new Promise((r) => setTimeout(r, 100))
-    return { moved: car.position.distanceTo(from), wrecked: car.wrecked }
+    const moved = tracked
+      .filter((t) => !t.car.wrecked && e.traffic.cars.includes(t.car))
+      .map((t) => t.car.position.distanceTo(t.from))
+      .sort((a, b) => a - b)
+    return { cars: moved.length, median: moved[Math.floor(moved.length / 2)] ?? 0 }
   })
-  check('traffic drives along its lanes', travelled !== null && travelled.moved > 8, JSON.stringify(travelled))
+  check(
+    'traffic drives along its lanes',
+    travelled !== null && travelled.median > 8,
+    JSON.stringify(travelled),
+  )
 
   // Ramming one has to hand it to the solver, damage the player and register a
   // crash — traffic that shrugs off a hit is scenery.
@@ -331,6 +363,86 @@ console.log('\ntraffic')
   )
   check('ramming traffic damages the player', (hit?.damage ?? 0) > 0.05, JSON.stringify(hit))
   check('ramming traffic registers a crash', (hit?.crash ?? 0) > 0, JSON.stringify(hit))
+  // Gadgets have to mean something with nobody else online, and traffic is what
+  // gives them that. The hazards are placed directly rather than driven to, so
+  // the player never has to be teleported into the lane being tested.
+  // A car that is rolling, has road ahead of it, and is far enough from the
+  // parked player that neither it nor the hazard is affected by us sitting
+  // there. Traffic turns over constantly, so this waits for one rather than
+  // taking whatever happens to be in the array on the first look.
+  const pickTarget = `
+    const e = window.__CRASHOUT__
+    const fits = (c) => {
+      if (c.wrecked || c.speed < 5 || c.lane.length - c.s < 40) return false
+      const p = e.vehicle.position
+      if (c.position.distanceTo(p) < 35 || c.position.distanceTo(p) > 250) return false
+      const aheadX = c.position.x + Math.sin(c.heading) * 30
+      const aheadZ = c.position.z + Math.cos(c.heading) * 30
+      return Math.hypot(aheadX - p.x, aheadZ - p.z) > 30
+    }
+    let car = e.traffic.cars.find(fits)
+    const searchUntil = e.probe().simTime + 15
+    while (!car && e.probe().simTime < searchUntil) {
+      await new Promise((r) => setTimeout(r, 120))
+      car = e.traffic.cars.find(fits)
+    }
+  `
+
+  const strip = await page.evaluate(async (pick) => {
+    const e = window.__CRASHOUT__
+    e.vehicle.repair()
+    e.gadgets.clear()
+    const car = await new Function(`return (async () => { ${pick}; return car })()`)()
+    if (!car) return null
+    e.gadgets.spawnRemote(
+      'test-strip',
+      'spike_strip',
+      [car.position.x + Math.sin(car.heading) * 30, 0.1, car.position.z + Math.cos(car.heading) * 30],
+      car.heading,
+      'test',
+    )
+    const deadline = e.probe().simTime + 12
+    while (e.probe().simTime < deadline && !car.wrecked) {
+      await new Promise((r) => setTimeout(r, 80))
+    }
+    // How far away we were when it went: the strip has to be what got it, and
+    // parked in a live city we may well have been bumped by something else.
+    return { wrecked: car.wrecked, rangeWhenWrecked: car.position.distanceTo(e.vehicle.position) }
+  }, pickTarget)
+  check('a spike strip takes out the traffic that drives over it', strip?.wrecked === true, JSON.stringify(strip))
+  check(
+    'the gadget does it with the player nowhere near',
+    (strip?.rangeWhenWrecked ?? 0) > 15,
+    JSON.stringify(strip),
+  )
+
+  const smoke = await page.evaluate(async (pick) => {
+    const e = window.__CRASHOUT__
+    e.gadgets.clear()
+    const car = await new Function(`return (async () => { ${pick}; return car })()`)()
+    if (!car) return null
+    const before = car.speed
+    e.gadgets.spawnRemote(
+      'test-smoke',
+      'smoke_screen',
+      [car.position.x + Math.sin(car.heading) * 26, 0.1, car.position.z + Math.cos(car.heading) * 26],
+      car.heading,
+      'test',
+    )
+    const deadline = e.probe().simTime + 12
+    let slowest = before
+    while (e.probe().simTime < deadline) {
+      if (!car.wrecked && e.traffic.cars.includes(car)) slowest = Math.min(slowest, car.speed)
+      await new Promise((r) => setTimeout(r, 80))
+    }
+    return { before, slowest }
+  }, pickTarget)
+  check(
+    'traffic crawls through a smoke screen',
+    smoke !== null && smoke.slowest < smoke.before * 0.5,
+    JSON.stringify(smoke),
+  )
+
   await page.screenshot({ path: `${SHOTS}/05-traffic.png` })
 
   await page.evaluate(() => {
@@ -405,7 +517,8 @@ console.log('\ngarage')
   const before = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('crashout.save.v1')).profile.credits,
   )
-  await page.getByRole('button', { name: '6,500 ¢' }).click()
+  // Exact: there is a 16,500 ¢ car in the showroom too, and a loose match takes it.
+  await page.getByRole('button', { name: '6,500 ¢', exact: true }).click()
   await page.waitForTimeout(1200)
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('crashout.save.v1')))
   check('buying a car charges the catalogue price', before - after.profile.credits === 6500)

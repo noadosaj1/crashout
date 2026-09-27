@@ -24,6 +24,16 @@ export function ChallengesPanel({
   onCancel,
   playerPosition,
 }: ChallengesPanelProps) {
+  // Nearest first. The list is long enough now that config order is no order at
+  // all, and what you want is whatever you could drive to next.
+  const byDistance = ACTIVITY_LIST.map((activity) => {
+    const first = activity.waypoints[0]
+    return {
+      activity,
+      distance: Math.hypot(first[0] - playerPosition[0], first[2] - playerPosition[2]),
+    }
+  }).sort((a, b) => a.distance - b.distance)
+
   return (
     <div className="overlay">
       <div className="overlay__panel" style={{ maxWidth: 700 }}>
@@ -46,11 +56,7 @@ export function ChallengesPanel({
         )}
 
         <div className="option-list">
-          {ACTIVITY_LIST.map((activity) => {
-            const first = activity.waypoints[0]
-            const dx = first[0] - playerPosition[0]
-            const dz = first[2] - playerPosition[2]
-            const distance = Math.hypot(dx, dz)
+          {byDistance.map(({ activity, distance }) => {
             return (
               <div className="option" key={activity.id}>
                 <div>

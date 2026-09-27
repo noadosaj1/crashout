@@ -9,6 +9,8 @@ export type VehicleCategory =
   | 'suv'
   | 'pickup'
   | 'beater'
+  | 'van'
+  | 'rally'
 
 export type Drivetrain = 'fwd' | 'rwd' | 'awd'
 
@@ -112,7 +114,7 @@ export interface PlayerStats {
   creditsEarned: number
 }
 
-export type GadgetId = 'oil_slick' | 'smoke_screen' | 'bounce_pad' | 'spike_strip'
+export type GadgetId = 'oil_slick' | 'smoke_screen' | 'bounce_pad' | 'spike_strip' | 'thumper'
 
 export interface GadgetSpec {
   id: GadgetId

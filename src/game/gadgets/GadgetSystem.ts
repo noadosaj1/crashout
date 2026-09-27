@@ -5,6 +5,12 @@ import type { Vehicle } from '@/game/vehicles/Vehicle'
 import type { ParticleSystem } from '@/game/effects/ParticleSystem'
 import type { AudioSystem } from '@/game/audio/AudioSystem'
 
+/** A hazard as anything outside the gadget system needs to see it. */
+export interface ActiveHazard {
+  gadgetId: GadgetId
+  position: THREE.Vector3
+}
+
 interface Hazard {
   id: string
   gadgetId: GadgetId
@@ -17,11 +23,14 @@ interface Hazard {
   lastTriggered: Map<string, number>
 }
 
+const _thumperAway = new THREE.Vector3()
+
 const DISC = new THREE.CircleGeometry(1, 20)
 DISC.rotateX(-Math.PI / 2)
 const PAD = new THREE.BoxGeometry(1, 0.3, 1)
 const STRIP = new THREE.BoxGeometry(1, 0.18, 1)
 const PUFF = new THREE.SphereGeometry(1, 10, 8)
+const CHARGE = new THREE.CylinderGeometry(1, 1.15, 0.5, 12)
 
 /**
  * Hazards dropped by gadgets. Deliberately *not* physics sensors: a hazard is a
@@ -167,6 +176,12 @@ export class GadgetSystem {
         mesh.position.y = 0.09
         return mesh
       }
+      case 'thumper': {
+        const mesh = new THREE.Mesh(CHARGE, material)
+        mesh.scale.set(radius * 0.32, 1, radius * 0.32)
+        mesh.position.y = 0.25
+        return mesh
+      }
     }
   }
 
@@ -240,12 +255,44 @@ export class GadgetSystem {
         this.particles?.sparks(vehicle.position, new THREE.Vector3(0, 1, 0), 0.6)
         break
       }
+      case 'thumper': {
+        // Throws the car away from the charge rather than straight up, so it is
+        // aimed: drop it on the inside of a corner and the victim leaves the road.
+        const away = _thumperAway
+          .set(vehicle.position.x - hazard.position.x, 0, vehicle.position.z - hazard.position.z)
+        if (away.lengthSq() < 1e-4) away.set(Math.random() - 0.5, 0, Math.random() - 0.5)
+        away.normalize()
+        // Mostly sideways: the bounce pad is the one that sends you upstairs.
+        const impulse = vehicle.spec.mass * 9
+        vehicle.body.applyImpulse(
+          { x: away.x * impulse, y: impulse * 0.45, z: away.z * impulse },
+          true,
+        )
+        vehicle.body.applyTorqueImpulse(
+          { x: away.z * impulse * 0.5, y: (Math.random() - 0.5) * impulse * 0.4, z: -away.x * impulse * 0.5 },
+          true,
+        )
+        vehicle.applyDamage('rear', 0.12)
+        this.particles?.sparks(vehicle.position, away, 1)
+        this.particles?.smoke(vehicle.position, 0.8)
+        break
+      }
       case 'spike_strip':
         vehicle.applyTractionPenalty(0.4, 9)
         vehicle.applyDamage('front', 0.12)
         this.particles?.sparks(vehicle.position, new THREE.Vector3(0, 1, 0), 0.4)
         break
     }
+  }
+
+  /**
+   * Live hazards, for systems that are not vehicles. Traffic reads this so a
+   * spike strip laid across a junction catches whatever drives over it. It is a
+   * map rather than an iterator because every car checks it in turn, and an
+   * iterator would be spent on the first one.
+   */
+  get activeHazards(): ReadonlyMap<string, ActiveHazard> {
+    return this.hazards
   }
 
   /** True when the local camera is inside a smoke cloud (drives the HUD blind overlay). */
