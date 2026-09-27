@@ -100,6 +100,15 @@ export function GameShell({ adapter, initialSave, onQuit }: GameShellProps) {
         engine.setSpawnSlotFor(getClientId())
         const activeId = initialSave.profile.activeVehicleId
         const owned = initialSave.vehicles.find((v) => v.id === activeId) ?? initialSave.vehicles[0]
+        if (!owned) {
+          // Reachable on a real backend: the signup trigger only grants the
+          // starter car if the vehicle catalogue has been seeded, so an account
+          // created before the seed migration ran has an empty garage.
+          throw new Error(
+            'This account has no vehicles. If you are self-hosting, check that ' +
+              'supabase/migrations/0003_seed_catalog.sql has been run, then sign up again.',
+          )
+        }
         engine.spawnLocalVehicle(owned)
         engine.setOwnedGadgets(initialSave.gadgets)
 
