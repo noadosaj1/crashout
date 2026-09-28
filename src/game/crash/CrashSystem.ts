@@ -202,7 +202,7 @@ export class CrashSystem {
       if (severity > 0.12) particles.smoke(_pos, severity * 1.4)
       if (severity > 0.2) {
         particles.glass(_pos, severity)
-        particles.debris(_pos, severity, vehicle.mesh.bodyMaterial.color.getHex())
+        particles.debris(_pos, severity, vehicle.mesh.paintColor.getHex())
       }
     }
     this.audio?.playImpact(_pos, severity, vehicleToVehicle)

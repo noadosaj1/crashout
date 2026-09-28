@@ -285,6 +285,39 @@ Vehicles are fictional. No real manufacturer's marks, models or branding are
 used, and the vehicle data layer is deliberately shaped so licensed cars could be
 added later if the rights existed.
 
+### Car models
+
+Cars are built from Kenney's Car Kit (CC0, credited in
+`public/models/cars/LICENSE.txt`) rather than from boxes. A spec points at one
+by name:
+
+```ts
+visual: { model: 'sedan-sports', roofScale: 0.74, ... }
+```
+
+Anything in `public/models/cars` works, and dropping another CC0 pack in there
+is the cheapest way to add variety. A spec without a `model`, or one whose file
+fails to load, falls back to the procedural mesh — that path is still complete,
+and it is what draws the car if the models are stripped out.
+
+Three things happen to a model on the way in:
+
+- **It is scaled to its collider**, per axis, so what you see is what you hit.
+  The models are stubbier than real cars; the specs are in metres.
+- **The body is cut into panels** — bumpers, nose, tail, flanks, roof — by where
+  each triangle sits on the car, so the damage model crumples real geometry and
+  a wrecked car tears along those seams.
+- **It is repainted.** These models colour themselves by pointing their UVs at
+  bands of one shared palette, so the paint is applied by rewriting the band the
+  bodywork uses, leaving glass, lights and tyres alone. Note that glTF textures
+  are stored top-down (`flipY` is false): reading the palette the other way up
+  samples a different colour entirely.
+
+Traffic is built the same way, but whole — body and wheels merged into one
+geometry per vehicle type, one draw call each — and keeps the palette's own
+colours, so the variety comes from there being seven kinds of vehicle on the
+road rather than from tinting one.
+
 ---
 
 ## Scripts

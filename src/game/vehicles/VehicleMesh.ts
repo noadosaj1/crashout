@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { VehicleCustomization, VehicleSpec } from '@/types'
 import { findAccent, findPaint, findWheel } from '@/config/customization'
+import { box, cylinder } from './primitives'
+import { getCarModel } from './CarModels'
+import { buildModelVehicleMesh } from './VehicleModelMesh'
 
 export interface VehicleMeshParts {
   root: THREE.Group
@@ -21,6 +24,12 @@ export interface VehicleMeshParts {
   boostFlames: THREE.Mesh
   bodyMaterial: THREE.MeshStandardMaterial
   accentMaterial: THREE.MeshStandardMaterial
+  /**
+   * The paint, for anything that needs the colour rather than the material —
+   * debris, for one. A model-built car carries its colour in a texture, so its
+   * body material is white and reading the colour off it would give white.
+   */
+  paintColor: THREE.Color
   dispose: () => void
 }
 
@@ -63,23 +72,6 @@ class PanelBuilder {
   }
 }
 
-/** A box, positioned and optionally rotated, as loose geometry ready to merge. */
-function box(
-  sx: number,
-  sy: number,
-  sz: number,
-  x: number,
-  y: number,
-  z: number,
-  rot?: { x?: number; y?: number; z?: number },
-): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(sx, sy, sz)
-  if (rot?.x) g.rotateX(rot.x)
-  if (rot?.y) g.rotateY(rot.y)
-  if (rot?.z) g.rotateZ(rot.z)
-  g.translate(x, y, z)
-  return g
-}
 
 /** A wedge: a box with its top face narrowed along Z, for hoods and noses. */
 function wedge(
@@ -106,26 +98,17 @@ function wedge(
   return g
 }
 
-function cylinder(
-  radius: number,
-  height: number,
-  segments: number,
-  axis: 'x' | 'y',
-  x: number,
-  y: number,
-  z: number,
-): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(radius, radius, height, segments)
-  if (axis === 'x') g.rotateZ(Math.PI / 2)
-  g.translate(x, y, z)
-  return g
-}
 
 /**
  * Builds a car. Panels are separate objects so the damage system can crumple
  * them individually; everything inside a panel is merged.
  */
 export function buildVehicleMesh(spec: VehicleSpec, customization: VehicleCustomization): VehicleMeshParts {
+  // A car with a model gets built from it. Everything below is the fallback,
+  // and it is a real one: no model configured, or the file failed to load.
+  const model = spec.visual.model ? getCarModel(spec.visual.model) : null
+  if (model) return buildModelVehicleMesh(spec, customization, model)
+
   const { halfWidth: hw, halfHeight: hh, halfLength: hl } = spec.dimensions
   const paint = findPaint(customization.paint)
   const accent = findAccent(customization.accent)
@@ -454,6 +437,7 @@ export function buildVehicleMesh(spec: VehicleSpec, customization: VehicleCustom
     boostFlames,
     bodyMaterial,
     accentMaterial,
+    paintColor: bodyColor,
     dispose: () => {
       root.traverse((obj) => {
         if (obj instanceof THREE.Mesh) obj.geometry.dispose()

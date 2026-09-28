@@ -88,7 +88,10 @@ async function waitForState(page, predicate, { timeout = 30_000, step = 250 } = 
 console.log('\nboot')
 const page = await boot('main')
 {
-  const state = await probe(page)
+  // Wait for the car to settle rather than for a fixed slice of wall time: the
+  // first frames after boot are busy (models, meshes) and under a software
+  // renderer they can be slow enough that the car is still dropping.
+  const state = await waitForState(page, (s) => s.wheelsDown === 4)
   check('world is built', state.rigidBodies > 300, `${state.rigidBodies} bodies`)
   check('car spawns on all four wheels', state.wheelsDown === 4, JSON.stringify(state.compression))
   check('car spawns undamaged', state.damage === 0)

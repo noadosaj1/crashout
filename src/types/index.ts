@@ -49,6 +49,12 @@ export interface VehicleSpec {
   wheel: { radius: number; width: number; frontOffsetZ: number; rearOffsetZ: number; offsetX: number }
   /** Procedural body-shape hints used by the mesh builder. */
   visual: {
+    /**
+     * Model in `public/models/cars` to build this car from. Without one the car
+     * is built procedurally from boxes, which is still the fallback if the file
+     * is missing at runtime.
+     */
+    model?: string
     roofScale: number
     roofOffsetZ: number
     noseSlope: number

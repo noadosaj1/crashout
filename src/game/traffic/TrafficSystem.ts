@@ -16,6 +16,7 @@ import {
 import { GADGETS } from '@/config/gadgets'
 import type { PhysicsWorld } from '@/game/physics/PhysicsWorld'
 import { enableInstanceColors } from '@/game/effects/instancedColor'
+import { getCarModel, type CarModel } from '@/game/vehicles/CarModels'
 import type { ActiveHazard } from '@/game/gadgets/GadgetSystem'
 import { TrafficNetwork, type Lane } from './TrafficNetwork'
 
@@ -130,28 +131,32 @@ export class TrafficSystem {
     this.weights = TRAFFIC_SILHOUETTES.map((s) => s.weight)
 
     for (const silhouette of TRAFFIC_SILHOUETTES) {
-      const geometry = enableInstanceColors(buildSilhouetteGeometry(silhouette))
-      // vertexColors lets the geometry's own tints (glass, tyres) survive being
-      // multiplied by the per-instance paint.
-      const material = new THREE.MeshStandardMaterial({
-        metalness: 0.4,
-        roughness: 0.45,
-        vertexColors: true,
-      })
+      const model = silhouette.model ? getCarModel(silhouette.model) : null
+      // A model already carries its own colours in one palette texture, so the
+      // fleet gets its variety from being different vehicles rather than from
+      // per-instance paint. Without one, fall back to the tinted boxes.
+      const geometry = model
+        ? buildModelSilhouette(silhouette, model)
+        : enableInstanceColors(buildSilhouetteGeometry(silhouette))
+      const material = model
+        ? new THREE.MeshStandardMaterial({ map: model.texture, metalness: 0.1, roughness: 0.6 })
+        : new THREE.MeshStandardMaterial({ metalness: 0.4, roughness: 0.45, vertexColors: true })
       const mesh = new THREE.InstancedMesh(geometry, material, TRAFFIC_DENSITY + 8)
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       mesh.castShadow = true
       mesh.receiveShadow = true
       mesh.frustumCulled = false
       mesh.count = 0
-      const colors = new THREE.InstancedBufferAttribute(
-        new Float32Array((TRAFFIC_DENSITY + 8) * 3).fill(1),
-        3,
-      )
-      mesh.instanceColor = colors
+      if (!model) {
+        const colors = new THREE.InstancedBufferAttribute(
+          new Float32Array((TRAFFIC_DENSITY + 8) * 3).fill(1),
+          3,
+        )
+        mesh.instanceColor = colors
+        this.colorAttributes[this.batches.length] = colors
+      }
       this.object.add(mesh)
       this.batches.push(mesh)
-      this.colorAttributes.push(colors)
     }
 
     this.unsubscribeContacts = physics.addContactHandler(this.onContact)
@@ -548,7 +553,6 @@ export class TrafficSystem {
     return desired * THREE.MathUtils.clamp(clear / (FOLLOW_DISTANCE - 7), 0, 1)
   }
 
-  /** Writes every live car into its silhouette's instanced batch. */
   /** Pushes the current positions into the instanced batches. Once per frame. */
   render(): void {
     const used = this.batches.map(() => 0)
@@ -560,12 +564,14 @@ export class TrafficSystem {
       _quat.set(r.x, r.y, r.z, r.w)
       _matrix.compose(car.position, _quat, _scale)
       batch.setMatrixAt(index, _matrix)
-      this.colorAttributes[car.silhouette].setXYZ(index, car.color.r, car.color.g, car.color.b)
+      // Only the fallback boxes are painted per instance; a model carries its
+      // own colours.
+      this.colorAttributes[car.silhouette]?.setXYZ(index, car.color.r, car.color.g, car.color.b)
     }
     for (let i = 0; i < this.batches.length; i++) {
       this.batches[i].count = used[i]
       this.batches[i].instanceMatrix.needsUpdate = true
-      this.colorAttributes[i].needsUpdate = true
+      if (this.colorAttributes[i]) this.colorAttributes[i].needsUpdate = true
     }
   }
 
@@ -580,6 +586,31 @@ export class TrafficSystem {
     }
     this.batches.length = 0
   }
+}
+
+/**
+ * A whole car from a model — body and wheels merged — scaled to the collider
+ * the traffic system drives around. One geometry per silhouette keeps the
+ * fleet down to a draw call each.
+ */
+function buildModelSilhouette(s: TrafficSilhouette, model: CarModel): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [model.body.clone()]
+  for (const mount of model.wheelMounts) {
+    const wheel = (mount.left ? model.wheelLeft : model.wheelRight).clone()
+    wheel.translate(mount.offset.x, mount.offset.y, mount.offset.z)
+    parts.push(wheel)
+  }
+  const merged = mergeGeometries(parts, false)!
+  for (const part of parts) part.dispose()
+
+  // Scale to the box, then sit the wheels on the ground rather than the body
+  // centre, which is where the kinematic body is driven from.
+  merged.computeBoundingBox()
+  const size = merged.boundingBox!.getSize(new THREE.Vector3())
+  merged.scale((s.half.x * 2) / size.x, (s.half.y * 2 * 1.9) / size.y, (s.half.z * 2) / size.z)
+  merged.computeBoundingBox()
+  merged.translate(0, -s.half.y - merged.boundingBox!.min.y, 0)
+  return merged
 }
 
 /** Body, cabin and four wheels, baked into one geometry. */

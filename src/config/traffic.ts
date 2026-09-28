@@ -2,6 +2,8 @@
 
 export interface TrafficSilhouette {
   id: string
+  /** Model in `public/models/cars`. Falls back to a box of `half` extents. */
+  model?: string
   /** Half extents of the collider and the body box. */
   half: { x: number; y: number; z: number }
   mass: number
@@ -16,14 +18,34 @@ export interface TrafficSilhouette {
 export const TRAFFIC_SILHOUETTES: TrafficSilhouette[] = [
   {
     id: 'sedan',
+    model: 'sedan',
     half: { x: 0.9, y: 0.42, z: 2.1 },
     mass: 1400,
     cabin: { scale: 0.8, offsetZ: -0.15, height: 0.62 },
-    weight: 5,
+    weight: 4,
     speed: 1,
   },
   {
+    id: 'taxi',
+    model: 'taxi',
+    half: { x: 0.9, y: 0.44, z: 2.15 },
+    mass: 1450,
+    cabin: { scale: 0.8, offsetZ: -0.15, height: 0.62 },
+    weight: 2,
+    speed: 1.04,
+  },
+  {
+    id: 'police',
+    model: 'police',
+    half: { x: 0.92, y: 0.44, z: 2.2 },
+    mass: 1600,
+    cabin: { scale: 0.8, offsetZ: -0.15, height: 0.62 },
+    weight: 1,
+    speed: 1.12,
+  },
+  {
     id: 'van',
+    model: 'van',
     half: { x: 0.98, y: 0.62, z: 2.5 },
     mass: 2100,
     cabin: { scale: 0.92, offsetZ: 0.55, height: 0.5 },
@@ -31,12 +53,41 @@ export const TRAFFIC_SILHOUETTES: TrafficSilhouette[] = [
     speed: 0.88,
   },
   {
+    id: 'delivery',
+    model: 'delivery',
+    half: { x: 1.0, y: 0.66, z: 2.6 },
+    mass: 2300,
+    cabin: { scale: 0.92, offsetZ: 0.55, height: 0.5 },
+    weight: 2,
+    speed: 0.85,
+  },
+  {
     id: 'truck',
+    model: 'truck',
     half: { x: 1.15, y: 0.85, z: 3.6 },
     mass: 4200,
     cabin: { scale: 0.86, offsetZ: 1.9, height: 0.55 },
     weight: 1,
     speed: 0.78,
+  },
+  {
+    id: 'ambulance',
+    model: 'ambulance',
+    half: { x: 1.0, y: 0.7, z: 2.7 },
+    mass: 2600,
+    cabin: { scale: 0.92, offsetZ: 0.55, height: 0.5 },
+    weight: 1,
+    // Somewhere to be.
+    speed: 1.2,
+  },
+  {
+    id: 'garbage-truck',
+    model: 'garbage-truck',
+    half: { x: 1.18, y: 0.95, z: 3.8 },
+    mass: 5200,
+    cabin: { scale: 0.86, offsetZ: 1.9, height: 0.55 },
+    weight: 1,
+    speed: 0.7,
   },
 ]
 

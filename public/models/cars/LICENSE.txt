@@ -1,0 +1,13 @@
+Car models: Kenney "Car Kit" — https://kenney.nl/assets/car-kit
+Licence: Creative Commons Zero (CC0 1.0 Universal), public domain.
+         https://creativecommons.org/publicdomain/zero/1.0/
+
+Free for personal, educational and commercial use. Crediting Kenney is
+appreciated but not required; this file is that credit.
+
+The .glb files here are the pack's models with their textures embedded, taken
+from the Tiny Game Engine model library mirror (also CC0):
+https://github.com/Hidencod/tge-assets
+
+No real manufacturer's marks, models or branding are used, which is the same
+rule the procedural cars were built under.
