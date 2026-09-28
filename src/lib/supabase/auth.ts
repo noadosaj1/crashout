@@ -22,16 +22,25 @@ export function onAuthChange(handler: (state: AuthState) => void): () => void {
   return () => data.subscription.unsubscribe()
 }
 
-export async function signUp(email: string, password: string, username: string): Promise<void> {
+/**
+ * Creates an account.
+ *
+ * Returns false when the project has email confirmation switched on, which is
+ * Supabase's default: the call succeeds, but no session comes back until the
+ * link in the email is clicked. Without this the sign-up form just stops, with
+ * no error and no session, and looks broken.
+ */
+export async function signUp(email: string, password: string, username: string): Promise<boolean> {
   const supabase = getSupabase()
   if (!supabase) throw new Error('Supabase is not configured')
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     // Read by the handle_new_user trigger to seed the profile row.
     options: { data: { username } },
   })
   if (error) throw error
+  return data.session !== null
 }
 
 export async function signIn(email: string, password: string): Promise<void> {

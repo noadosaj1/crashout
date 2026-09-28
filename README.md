@@ -182,16 +182,19 @@ Supabase is optional and strictly separated from live gameplay:
 ### Setting it up
 
 1. Create a Supabase project.
-2. Run the migrations in order:
-   ```
-   supabase/migrations/0001_initial_schema.sql
-   supabase/migrations/0002_economy_functions.sql
-   supabase/migrations/0003_seed_catalog.sql
-   ```
-   Either paste them into the SQL editor or run `supabase db push`.
+2. Run **every** file in `supabase/migrations`, in filename order — currently
+   `0001_initial_schema.sql` through `0004_content_pass.sql`. Either paste them
+   into the SQL editor or run `supabase db push`. The catalogue tables are what
+   price cars, gadgets and activities server-side, so a missing migration means
+   content the client can see but nobody can buy.
 3. Copy `.env.example` to `.env` and fill in your project URL and anon key.
 
 The anon key is meant to be public; Row Level Security is what protects the data.
+
+Supabase confirms email addresses by default, so a new account has no session
+until the link is clicked; the sign-up form says so. Turn it off under
+Authentication → Providers → Email if you would rather people play straight
+away.
 
 ### Economy security
 

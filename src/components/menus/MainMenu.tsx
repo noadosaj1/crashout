@@ -16,6 +16,7 @@ export function MainMenu({ onPlayGuest, onPlaySignedIn, signedInAs, onSignOut }:
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
   const [pending, setPending] = useState(false)
+  const [confirmSent, setConfirmSent] = useState(false)
   const error = useGameStore((s) => s.error)
   const setError = useGameStore((s) => s.setError)
 
@@ -25,7 +26,8 @@ export function MainMenu({ onPlayGuest, onPlaySignedIn, signedInAs, onSignOut }:
     setError(null)
     try {
       if (mode === 'signup') {
-        await signUp(email, password, username.trim() || 'Driver')
+        const signedIn = await signUp(email, password, username.trim() || 'Driver')
+        setConfirmSent(!signedIn)
       } else {
         await signIn(email, password)
       }
@@ -45,6 +47,15 @@ export function MainMenu({ onPlayGuest, onPlaySignedIn, signedInAs, onSignOut }:
         </div>
 
         {error && <div className="error-banner">{error}</div>}
+        {confirmSent && (
+          <div className="card">
+            <h2 className="card__title">Check your email</h2>
+            <p className="card__subtitle">
+              Confirm the address to finish creating the account, then sign in. You can play as a
+              guest in the meantime — a guest save stays on this device.
+            </p>
+          </div>
+        )}
 
         {signedInAs ? (
           <div className="card">
