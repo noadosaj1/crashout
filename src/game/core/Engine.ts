@@ -22,6 +22,7 @@ import { TrafficSystem, type TrafficContext } from '@/game/traffic/TrafficSystem
 import { PostProcessing } from './PostProcessing'
 import { regionFromLocalDirection } from '@/game/vehicles/damage'
 import { preloadCarModels } from '@/game/vehicles/CarModels'
+import { preloadWorldModels } from '@/game/world/WorldModels'
 import { gameEvents } from './GameEvents'
 
 export interface HudSnapshot {
@@ -123,7 +124,7 @@ export class Engine {
   /** Async because Rapier's wasm has to be ready before anything is built. */
   static async create(canvas: HTMLCanvasElement): Promise<Engine> {
     await initPhysics()
-    await preloadCarModels()
+    await Promise.all([preloadCarModels(), preloadWorldModels()])
     return new Engine(canvas)
   }
 

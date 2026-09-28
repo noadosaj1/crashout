@@ -1,7 +1,19 @@
 import * as THREE from 'three'
 import RAPIER from '@dimforge/rapier3d-compat'
+import { getWorldModel } from './WorldModels'
 import { COLLISION_GROUPS, CRASH_CONTACT_FORCE_GATE, WORLD_BOUNDS } from '@/config/constants'
-import { ROADS, ZONES, type RoadDef } from '@/config/world'
+import {
+  CITY_SCALE,
+  DOWNTOWN_MODELS,
+  HOUSE_MODELS,
+  HOUSE_SCALE,
+  ROADS,
+  TOWER_MODELS,
+  TREE_MODELS,
+  TREE_SCALE,
+  ZONES,
+  type RoadDef,
+} from '@/config/world'
 import type { PhysicsWorld } from '@/game/physics/PhysicsWorld'
 import { createWorldMaterials, disposeMaterials, type WorldMaterials } from './materials'
 import { SURFACE, SurfaceMap } from './SurfaceMap'
@@ -200,6 +212,57 @@ export class WorldBuilder {
       body,
     )
     this.staticColliders.add(collider.handle)
+  }
+
+  /**
+   * A scenery model, instanced, with a box collider cut to its own footprint.
+   *
+   * The model decides the size here rather than the other way round: these are
+   * modular kit pieces with windows and doors at a fixed scale, and stretching
+   * one to fit an arbitrary box makes a doll's house out of a tower. Returns
+   * false when the model is missing, so callers can fall back to a plain box.
+   */
+  private modelBuilding(
+    id: string,
+    x: number,
+    z: number,
+    scale: number,
+    rotY: number,
+    collide = true,
+  ): boolean {
+    const model = getWorldModel(id)
+    if (!model) return false
+
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY)
+    this.addInstance(
+      id,
+      model.geometry,
+      model.material,
+      new THREE.Vector3(x, 0, z),
+      new THREE.Vector3(scale, scale, scale),
+      q,
+    )
+    if (!collide) return true
+
+    // The footprint rotates with the model; the collider is axis-aligned to the
+    // model's own frame, which is what the rotation on the body is for.
+    const sx = (model.size.x * scale) / 2
+    const sy = (model.size.y * scale) / 2
+    const sz = (model.size.z * scale) / 2
+    const body = this.physics.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(x, sy, z)
+        .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }),
+    )
+    const collider = this.physics.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(sx, sy, sz)
+        .setFriction(0.9)
+        .setRestitution(0.1)
+        .setCollisionGroups((COLLISION_GROUPS.WORLD << 16) | (COLLISION_GROUPS.VEHICLE | COLLISION_GROUPS.PROP)),
+      body,
+    )
+    this.staticColliders.add(collider.handle)
+    return true
   }
 
   /**
@@ -564,16 +627,37 @@ export class WorldBuilder {
           continue
         }
 
-        // Two or three towers per block with a bit of setback.
-        const towers = 2 + Math.floor(rng() * 2)
-        for (let i = 0; i < towers; i++) {
+        // A block is laid out as a two-by-two of plots rather than a couple of
+        // buildings dropped in at random: models have a footprint of their own,
+        // and scattering them left most of downtown as empty tarmac.
+        const central = Math.abs(gx) + Math.abs(gz) < 2
+        const plots: Array<[number, number]> = [
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+          [1, 1],
+        ]
+        for (const [px, pz] of plots) {
+          if (rng() < 0.12) continue
+          const models = central && rng() < 0.6 ? TOWER_MODELS : DOWNTOWN_MODELS
+          const id = models[Math.floor(rng() * models.length)]
+          const scale = CITY_SCALE * (0.7 + rng() * 0.3)
+          const rotY = Math.floor(rng() * 4) * (Math.PI / 2)
+
+          // Keep the footprint inside its plot. A building that overhangs the
+          // kerb is a wall across the street, and the streets are the game.
+          const model = getWorldModel(id)
+          const half = model ? (Math.max(model.size.x, model.size.z) * scale) / 2 : 19
+          const plotHalf = blockHalf / 2
+          const room = Math.max(0, plotHalf - half)
+          const ox = px * plotHalf + (rng() - 0.5) * 2 * room
+          const oz = pz * plotHalf + (rng() - 0.5) * 2 * room
+          if (this.modelBuilding(id, cx + ox, cz + oz, scale, rotY)) continue
+
+          // No model: the grey boxes the city was built from, windows and all.
           const w = 16 + rng() * 22
           const d = 16 + rng() * 22
-          // Capped well below the Spire: any taller and the streets between
-          // them never see the sun.
-          const h = 16 + rng() * (Math.abs(gx) + Math.abs(gz) < 2 ? 44 : 26)
-          const ox = (rng() - 0.5) * (blockHalf - w / 2) * 1.4
-          const oz = (rng() - 0.5) * (blockHalf - d / 2) * 1.4
+          const h = 16 + rng() * (central ? 44 : 26)
           const key = rng() < 0.35 ? 'tower_glass' : rng() < 0.5 ? 'tower_a' : 'tower_b'
           const material =
             key === 'tower_glass'
@@ -582,8 +666,6 @@ export class WorldBuilder {
                 ? this.materials.buildingA
                 : this.materials.buildingB
           this.staticBox(key, material, cx + ox, h / 2, cz + oz, w, h, d)
-          // Window bands. Non-colliding decoration that turns a grey box into a
-          // building at almost no cost — they share one instanced mesh.
           const floors = Math.max(2, Math.floor((h - 6) / 5))
           for (let f = 0; f < floors; f++) {
             const y = 5 + f * ((h - 6) / floors)
@@ -598,7 +680,6 @@ export class WorldBuilder {
               false,
             )
           }
-          // Podium lip — something to clip a mirror on.
           this.staticBox('podium', this.materials.concrete, cx + ox, 1.2, cz + oz, w + 3, 2.4, d + 3)
         }
       }
@@ -644,19 +725,30 @@ export class WorldBuilder {
           const w = 11 + rng() * 5
           const d = 10 + rng() * 4
           const h = 5 + rng() * 3
-          this.staticBox('house', this.materials.house, x, h / 2, hz, w, h, d)
-          const roofHeight = 2.6
-          this.addInstance(
-            'house_roof',
-            UNIT_PYRAMID,
-            this.materials.roofTile,
-            new THREE.Vector3(x, h + roofHeight / 2, hz),
-            new THREE.Vector3(
-              (w + 1.2) / (PYRAMID_HALF * 2),
-              roofHeight,
-              (d + 1.2) / (PYRAMID_HALF * 2),
-            ),
+          // Houses face the road they stand on.
+          const id = HOUSE_MODELS[Math.floor(rng() * HOUSE_MODELS.length)]
+          const placed = this.modelBuilding(
+            id,
+            x,
+            hz,
+            HOUSE_SCALE * (0.9 + rng() * 0.25),
+            side > 0 ? Math.PI : 0,
           )
+          if (!placed) {
+            this.staticBox('house', this.materials.house, x, h / 2, hz, w, h, d)
+            const roofHeight = 2.6
+            this.addInstance(
+              'house_roof',
+              UNIT_PYRAMID,
+              this.materials.roofTile,
+              new THREE.Vector3(x, h + roofHeight / 2, hz),
+              new THREE.Vector3(
+                (w + 1.2) / (PYRAMID_HALF * 2),
+                roofHeight,
+                (d + 1.2) / (PYRAMID_HALF * 2),
+              ),
+            )
+          }
           // Driveway.
           this.surfaces.paintRect(x, hz - side * (d / 2 + 5), 3.2, 5, SURFACE.CONCRETE)
           this.addInstance(
@@ -679,6 +771,13 @@ export class WorldBuilder {
     for (let i = 0; i < 90; i++) {
       const x = -545 + rng() * 250
       const z = -90 + rng() * 420
+      const tree = TREE_MODELS[Math.floor(rng() * TREE_MODELS.length)]
+      // Trees are scenery, not obstacles: they have always been something you
+      // drive straight through, and a collider on each would line the verges
+      // with bollards.
+      if (this.modelBuilding(tree, x, z, TREE_SCALE * (0.8 + rng() * 0.5), rng() * Math.PI * 2, false)) {
+        continue
+      }
       this.addInstance(
         'trunk',
         UNIT_CYLINDER,

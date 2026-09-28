@@ -1,0 +1,12 @@
+City and suburb models: Kenney "City Kit (Commercial)" and "City Kit (Suburban)"
+  https://kenney.nl/assets/city-kit-commercial
+  https://kenney.nl/assets/city-kit-suburban
+Licence: Creative Commons Zero (CC0 1.0 Universal), public domain.
+         https://creativecommons.org/publicdomain/zero/1.0/
+
+Free for personal, educational and commercial use. Crediting Kenney is
+appreciated but not required; this file is that credit.
+
+The .glb files here are the packs' models with their textures embedded, taken
+from the Tiny Game Engine model library mirror (also CC0):
+https://github.com/Hidencod/tge-assets

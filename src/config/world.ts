@@ -93,14 +93,72 @@ export const LANDMARKS: LandmarkDef[] = [
   { id: 'overlook', name: 'Suburb Overlook', position: [-420, 0, 180] },
 ]
 
-/** Where players spawn when they join or recover with no better option. */
+/**
+ * Where players spawn when they join or recover with no better option.
+ *
+ * All of these sit in the lanes of the central avenue. They used to spread
+ * sideways onto the blocks, which was harmless while a block was empty tarmac
+ * with a tower somewhere on it — now that blocks are built up, a spawn a few
+ * metres off the road is a spawn inside a building.
+ */
 export const DEFAULT_SPAWNS: Array<[number, number, number]> = [
-  [10, 1.5, 120],
-  [-10, 1.5, 132],
-  [26, 1.5, 120],
-  [-26, 1.5, 132],
-  [10, 1.5, 148],
-  [-10, 1.5, 160],
-  [26, 1.5, 148],
-  [-26, 1.5, 160],
+  [6, 1.5, 104],
+  [-6, 1.5, 116],
+  [6, 1.5, 128],
+  [-6, 1.5, 140],
+  [6, 1.5, 152],
+  [-6, 1.5, 164],
+  [6, 1.5, 176],
+  [-6, 1.5, 188],
 ]
+
+/**
+ * Scenery models in `public/models/city`, and how big one kit unit is in
+ * metres. The kits are modular tiles about a unit across, so the scale is what
+ * decides whether a block reads as a shopfront or a tower.
+ */
+export const BUILDING_MODELS = [
+  'building-a',
+  'building-b',
+  'building-c',
+  'building-d',
+  'building-e',
+  'building-f',
+  'building-skyscraper-a',
+  'building-skyscraper-b',
+  'building-skyscraper-c',
+  'building-skyscraper-d',
+  'building-skyscraper-e',
+  'building-type-a',
+  'building-type-b',
+  'building-type-c',
+  'building-type-d',
+  'building-type-e',
+  'building-type-f',
+  'tree-large',
+  'tree-small',
+] as const
+
+/** Downtown mid-rises and the towers that go behind them. */
+export const DOWNTOWN_MODELS = ['building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f']
+export const TOWER_MODELS = [
+  'building-skyscraper-a',
+  'building-skyscraper-b',
+  'building-skyscraper-c',
+  'building-skyscraper-d',
+  'building-skyscraper-e',
+]
+export const HOUSE_MODELS = [
+  'building-type-a',
+  'building-type-b',
+  'building-type-c',
+  'building-type-d',
+  'building-type-e',
+  'building-type-f',
+]
+export const TREE_MODELS = ['tree-large', 'tree-small']
+
+/** Metres per kit unit. */
+export const CITY_SCALE = 16
+export const HOUSE_SCALE = 10
+export const TREE_SCALE = 11

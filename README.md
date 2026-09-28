@@ -313,6 +313,15 @@ Three things happen to a model on the way in:
   are stored top-down (`flipY` is false): reading the palette the other way up
   samples a different colour entirely.
 
+The city is built from the same kits — Kenney's commercial and suburban city
+kits, in `public/models/city`. Scenery works the other way round from cars:
+the model decides the size and the collider is cut to fit it, because these
+are modular pieces with windows and doors at a fixed scale and stretching one
+to fill an arbitrary box makes a doll's house out of a tower. `CITY_SCALE` in
+`src/config/world.ts` is how many metres a kit unit is worth, and downtown
+lays each block out as a two-by-two of plots so the footprints stay off the
+kerb. Buildings that fail to load fall back to the boxes with window bands.
+
 Traffic is built the same way, but whole — body and wheels merged into one
 geometry per vehicle type, one draw call each — and keeps the palette's own
 colours, so the variety comes from there being seven kinds of vehicle on the
